@@ -150,7 +150,7 @@ export default function LobbyPage() {
                   {room.hasActiveBet && (
                     <Badge variant="default" className="text-xs">
                       <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1.5 animate-pulse inline-block" />
-                      投注进行中
+                      点餐进行中
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground flex items-center gap-1">

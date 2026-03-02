@@ -181,7 +181,7 @@ function RoomsAdmin() {
                   <div className="flex items-center gap-2 flex-wrap justify-end">
                     {room.hasActiveBet && (
                       <span className="text-xs text-primary font-medium bg-primary/10 px-2 py-0.5 rounded-md">
-                        投注中
+                        点餐中
                       </span>
                     )}
                     <Button
@@ -391,7 +391,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
       const colored = options.map((o, i) => ({ ...o, color: COLORS[i % COLORS.length] }));
       return apiRequest("POST", `/api/rooms/${roomId}/bet-round`, { options: colored });
     },
-    onSuccess: () => { refetch(); toast({ title: "投注已开启！" }); },
+    onSuccess: () => { refetch(); toast({ title: "点餐已开启！" }); },
     onError: (e: Error) => toast({ title: "开启失败", description: e.message, variant: "destructive" }),
   });
 
@@ -409,7 +409,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
   const closeBetMutation = useMutation({
     mutationFn: (winnerOption: string) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption }),
-    onSuccess: () => { refetch(); toast({ title: "投注已结束，奖励已发放！" }); },
+    onSuccess: () => { refetch(); toast({ title: "点餐已结束，奖励已发放！" }); },
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
   });
 
@@ -454,7 +454,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
     <div className="py-3 space-y-3">
       <div className="bg-background border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">投注选项配置</h4>
+          <h4 className="text-sm font-semibold">点餐选项配置</h4>
           {betRound && !editingOptions && (
             <button
               data-testid="button-edit-options"
@@ -470,7 +470,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
         {(!betRound || editingOptions) ? (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              {betRound ? "修改进行中的投注选项：" : "自定义下注选项（可添加、删除、重命名）："}
+              {betRound ? "修改进行中的点餐选项：" : "自定义点餐选项（可添加、删除、重命名）："}
             </p>
 
             {options.map((opt, i) => (
@@ -566,7 +566,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
           className="w-full"
         >
           <Play className="w-3.5 h-3.5 mr-1.5" />
-          {startBetMutation.isPending ? "开启中..." : `开启投注（${options.length} 个选项）`}
+          {startBetMutation.isPending ? "开启中..." : `开启点餐（${options.length} 个选项）`}
         </Button>
       ) : (
         <div className="space-y-2">
@@ -959,7 +959,7 @@ function BotAdmin() {
               <div>
                 <p className="font-medium text-sm">托管自动下注</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  开启后，投注轮开始时托账号将自动随机下注
+                  开启后，点餐开始时托账号将自动随机点餐
                 </p>
               </div>
               <button

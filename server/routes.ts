@@ -419,7 +419,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: "🎯 投注已开始！请选择您的选项进行下注。",
+      content: "点餐已开始！请选择您的选项。",
       type: "system",
     });
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
@@ -495,7 +495,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `🏆 投注结束！获胜选项：${winnerOpt?.label || parsed.data.winnerOption}。奖池共 ${totalPool} 金币，已分配给胜者。`,
+      content: `点餐已结束！获胜选项：${winnerOpt?.label || parsed.data.winnerOption}。奖池共 ${totalPool} 金币，已分配给胜者。`,
       type: "system",
     });
 
@@ -721,7 +721,7 @@ async function seedData() {
     const room3 = await storage.createRoom({ name: "幸运色子间", description: "猜猜骰子点数，运气决定一切", createdBy: adminUser.id });
 
     await storage.createMessage({ roomId: room1.id, content: "欢迎来到百家乐大厅！", type: "system" });
-    await storage.createMessage({ roomId: room1.id, content: "请理性投注，享受游戏乐趣。", type: "system" });
+    await storage.createMessage({ roomId: room1.id, content: "请理性点餐，享受用餐乐趣。", type: "system" });
     await storage.createMessage({ roomId: room2.id, content: "欢迎来到竞技预测厅！", type: "system" });
     await storage.createMessage({ roomId: room3.id, content: "欢迎来到幸运色子间！", type: "system" });
   } catch (e) {
