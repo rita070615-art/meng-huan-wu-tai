@@ -233,7 +233,7 @@ export default function RoomPage() {
               <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center">
                 <TrendingUp className="w-3.5 h-3.5 text-primary" />
               </div>
-              <h3 className="font-semibold text-sm">下注面板</h3>
+              <h3 className="font-semibold text-sm">菜单面板</h3>
               {currentRound ? (
                 <Badge variant="default" className="ml-auto text-xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
@@ -246,7 +246,7 @@ export default function RoomPage() {
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">预测结果，赢取奖励</p>
+            <p className="text-xs text-muted-foreground">选择你的菜单</p>
           </div>
 
           {currentRound ? (
