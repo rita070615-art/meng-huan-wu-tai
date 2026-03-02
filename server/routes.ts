@@ -381,7 +381,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, isShill: u.isShill })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
