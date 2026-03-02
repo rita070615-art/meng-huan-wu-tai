@@ -10,32 +10,19 @@ const app = express();
 app.set("trust proxy", true);
 const httpServer = createServer(app);
 
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet());
 
 app.use(cors({
   origin: true,
   credentials: true,
 }));
 
-const generalLimiter = rateLimit({
+const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "请求过于频繁，请稍后再试" },
+  max: 60,
 });
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "登录尝试过多，请 15 分钟后再试" },
-});
-
-app.use("/api", generalLimiter);
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", authLimiter);
+app.use(limiter);
 
 declare module "http" {
   interface IncomingMessage {
