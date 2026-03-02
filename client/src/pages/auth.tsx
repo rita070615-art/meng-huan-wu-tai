@@ -113,11 +113,6 @@ export default function AuthPage() {
             </Button>
           </form>
 
-          {isLogin && (
-            <p className="mt-4 text-xs text-center text-muted-foreground">
-              管理员账号：admin / admin123
-            </p>
-          )}
         </div>
       </div>
     </div>
