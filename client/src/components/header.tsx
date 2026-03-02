@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Coins, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import logoImg from "@assets/image_1772474654665.png";
 
 type HeaderProps = {
   showBack?: boolean;
@@ -30,15 +31,11 @@ export default function Header({ showBack, title }: HeaderProps) {
           )}
           <button
             onClick={() => setLocation("/")}
-            className="flex items-center gap-2 shrink-0"
+            className="flex items-center gap-1.5 shrink-0"
             data-testid="link-home"
           >
-            <div className="w-7 h-7 rounded-md bg-primary flex items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <span className="font-bold text-base hidden sm:block">Dream Stage</span>
+            <img src={logoImg} alt="梦幻舞台" className="w-9 h-9 object-contain rounded-md" />
+            <span className="font-bold text-base hidden sm:block">梦幻舞台</span>
           </button>
           {title && (
             <span className="text-foreground text-sm font-medium truncate max-w-[120px] sm:max-w-none sm:text-muted-foreground">

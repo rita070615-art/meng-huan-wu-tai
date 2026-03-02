@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import logoImg from "@assets/image_1772474654665.png";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -40,13 +41,9 @@ export default function AuthPage() {
 
       <div className="relative w-full max-w-sm mx-4">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-4">
-            <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-6 h-6 fill-primary-foreground">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <span className="text-2xl font-bold tracking-tight">Dream Stage</span>
+          <div className="inline-flex flex-col items-center gap-2 mb-4">
+            <img src={logoImg} alt="梦幻舞台" className="w-32 h-32 object-contain" />
+            <span className="text-2xl font-bold tracking-tight">梦幻舞台</span>
           </div>
           <p className="text-muted-foreground text-sm">
             {isLogin ? "登录您的账户，开始游戏" : "创建账户，加入游戏大厅"}
