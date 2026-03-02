@@ -55,6 +55,7 @@ export const bets = pgTable("bets", {
   roomId: varchar("room_id", { length: 36 }).notNull(),
   userId: varchar("user_id", { length: 36 }).notNull(),
   username: text("username").notNull(),
+  nickname: text("nickname"),
   option: text("option").notNull(),
   amount: integer("amount").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

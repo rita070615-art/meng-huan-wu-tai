@@ -39,7 +39,7 @@ export interface IStorage {
   updateBetRoundOptions(id: string, options: object): Promise<BetRound | undefined>;
 
   // Bets
-  placeBet(data: { roundId: string; roomId: string; userId: string; username: string; option: string; amount: number }): Promise<Bet>;
+  placeBet(data: { roundId: string; roomId: string; userId: string; username: string; nickname?: string | null; option: string; amount: number }): Promise<Bet>;
   getBetsForRound(roundId: string): Promise<Bet[]>;
   getBetsForRoom(roomId: string): Promise<Bet[]>;
   getUserBetInRound(userId: string, roundId: string): Promise<Bet | undefined>;
@@ -191,7 +191,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async placeBet(data: { roundId: string; roomId: string; userId: string; username: string; option: string; amount: number }): Promise<Bet> {
+  async placeBet(data: { roundId: string; roomId: string; userId: string; username: string; nickname?: string | null; option: string; amount: number }): Promise<Bet> {
     const id = randomUUID();
     const result = await db.insert(bets).values({ id, ...data }).returning();
     return result[0];

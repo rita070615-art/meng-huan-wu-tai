@@ -576,7 +576,7 @@ export default function RoomPage() {
                         {opt?.label || bet.option}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{bet.username}</p>
+                        <p className="text-sm font-medium truncate">{bet.nickname || bet.username}</p>
                         <p className="text-xs text-muted-foreground">
                           {new Date(bet.createdAt).toLocaleTimeString("zh-CN", {
                             hour: "2-digit",

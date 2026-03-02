@@ -568,11 +568,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 return;
               }
               const randomOption = optionsList[Math.floor(Math.random() * optionsList.length)].key;
+              const shillUser = await storage.getUser(shillId);
               const bet = await storage.placeBet({
                 roundId,
                 roomId,
                 userId: shillId,
                 username: shillUsername,
+                nickname: shillUser?.nickname || null,
                 option: randomOption,
                 amount,
               });
@@ -658,6 +660,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       roomId: req.params.id,
       userId: req.session.userId!,
       username: req.session.username!,
+      nickname: user.nickname || null,
       option: parsed.data.option,
       amount: parsed.data.amount,
     });
