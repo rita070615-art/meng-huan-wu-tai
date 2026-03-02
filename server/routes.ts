@@ -291,7 +291,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role, notes: u.notes || "" })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
@@ -302,6 +302,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.updateUserBalance(req.params.id, parsed.data.balance);
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json({ id: user.id, username: user.username, balance: user.balance });
+  });
+
+  app.patch("/api/admin/users/:id/notes", requireAdmin, async (req, res) => {
+    const schema = z.object({ notes: z.string().max(500) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid notes" });
+
+    const user = await storage.updateUserNotes(req.params.id, parsed.data.notes);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ id: user.id, username: user.username, notes: user.notes });
   });
 
   // WEBSOCKET

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { Room, BetRound, BetOption } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; balance: number; role: string };
+type AdminUser = { id: string; username: string; balance: number; role: string; notes: string };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -429,8 +429,10 @@ function BetRoundManager({ roomId }: { roomId: string }) {
 
 function UsersAdmin() {
   const { toast } = useToast();
-  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editingBalance, setEditingBalance] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState("");
+  const [editingNotes, setEditingNotes] = useState<string | null>(null);
+  const [editNotes, setEditNotes] = useState("");
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -441,10 +443,21 @@ function UsersAdmin() {
       apiRequest("PATCH", `/api/admin/users/${id}/balance`, { balance }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      setEditingUser(null);
+      setEditingBalance(null);
       toast({ title: "余额已更新" });
     },
     onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes: string }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/notes`, { notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setEditingNotes(null);
+      toast({ title: "备注已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
   });
 
   return (
@@ -455,7 +468,7 @@ function UsersAdmin() {
       </h2>
       {isLoading ? (
         <div className="space-y-2">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
         </div>
       ) : users && users.length > 0 ? (
         <div className="space-y-2">
@@ -463,68 +476,124 @@ function UsersAdmin() {
             <div
               key={u.id}
               data-testid={`admin-user-${u.id}`}
-              className="bg-card border border-card-border rounded-lg p-4 flex items-center gap-4"
+              className="bg-card border border-card-border rounded-lg p-4 space-y-3"
             >
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary shrink-0">
-                {u.username[0].toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium truncate">{u.username}</p>
-                <p className="text-xs text-muted-foreground">
-                  {u.role === "admin" ? "管理员" : "普通用户"}
-                </p>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                  {u.username[0].toUpperCase()}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{u.username}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {u.role === "admin" ? "管理员" : "普通用户"}
+                  </p>
+                </div>
+
+                {editingBalance === u.id ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Input
+                      data-testid={`input-balance-${u.id}`}
+                      type="number"
+                      min={0}
+                      value={editBalance}
+                      onChange={(e) => setEditBalance(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") updateBalanceMutation.mutate({ id: u.id, balance: parseInt(editBalance) });
+                        if (e.key === "Escape") setEditingBalance(null);
+                      }}
+                      className="w-28 h-8 text-sm"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      variant="default"
+                      data-testid={`button-save-balance-${u.id}`}
+                      onClick={() => updateBalanceMutation.mutate({ id: u.id, balance: parseInt(editBalance) })}
+                      disabled={updateBalanceMutation.isPending}
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingBalance(null)}>
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className="text-sm font-semibold flex items-center gap-1"
+                      data-testid={`text-user-balance-${u.id}`}
+                    >
+                      <Coins className="w-3.5 h-3.5 text-yellow-500" />
+                      {u.balance.toLocaleString()}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid={`button-edit-balance-${u.id}`}
+                      onClick={() => { setEditingBalance(u.id); setEditBalance(String(u.balance)); }}
+                      title="修改余额"
+                    >
+                      <Coins className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {editingUser === u.id ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    data-testid={`input-balance-${u.id}`}
-                    type="number"
-                    min={0}
-                    value={editBalance}
-                    onChange={(e) => setEditBalance(e.target.value)}
-                    className="w-28 h-8 text-sm"
-                    autoFocus
-                  />
-                  <Button
-                    size="sm"
-                    variant="default"
-                    data-testid={`button-save-balance-${u.id}`}
-                    onClick={() => updateBalanceMutation.mutate({ id: u.id, balance: parseInt(editBalance) })}
-                    disabled={updateBalanceMutation.isPending}
+              <div className="ml-12 space-y-1.5">
+                {editingNotes === u.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      data-testid={`input-notes-${u.id}`}
+                      value={editNotes}
+                      onChange={(e) => setEditNotes(e.target.value)}
+                      placeholder="输入备注内容（最多 500 字）..."
+                      maxLength={500}
+                      rows={3}
+                      autoFocus
+                      className="w-full text-sm bg-background border border-border rounded-md px-3 py-2 resize-none outline-none focus:border-primary transition-colors text-foreground placeholder:text-muted-foreground"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        data-testid={`button-save-notes-${u.id}`}
+                        onClick={() => updateNotesMutation.mutate({ id: u.id, notes: editNotes })}
+                        disabled={updateNotesMutation.isPending}
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1" />
+                        保存备注
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingNotes(null)}>
+                        取消
+                      </Button>
+                      <span className="text-xs text-muted-foreground ml-auto">{editNotes.length}/500</span>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    data-testid={`button-edit-notes-${u.id}`}
+                    onClick={() => { setEditingNotes(u.id); setEditNotes(u.notes || ""); }}
+                    className="w-full text-left group"
                   >
-                    <Check className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setEditingUser(null)}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span
-                    className="text-sm font-semibold flex items-center gap-1"
-                    data-testid={`text-user-balance-${u.id}`}
-                  >
-                    <Coins className="w-3.5 h-3.5 text-yellow-500" />
-                    {u.balance.toLocaleString()}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    data-testid={`button-edit-balance-${u.id}`}
-                    onClick={() => {
-                      setEditingUser(u.id);
-                      setEditBalance(String(u.balance));
-                    }}
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              )}
+                    {u.notes ? (
+                      <div className="flex items-start gap-2 bg-muted/50 rounded-md px-3 py-2">
+                        <span
+                          className="text-sm text-foreground flex-1 whitespace-pre-wrap break-words"
+                          data-testid={`text-notes-${u.id}`}
+                        >
+                          {u.notes}
+                        </span>
+                        <Edit2 className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-muted-foreground text-xs border border-dashed border-border rounded-md px-3 py-1.5 group-hover:border-primary/50 group-hover:text-primary transition-colors">
+                        <Edit2 className="w-3 h-3" />
+                        点击添加备注...
+                      </div>
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
