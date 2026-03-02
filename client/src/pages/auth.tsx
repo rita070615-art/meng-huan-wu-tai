@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Redirect } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import logoImg from "@assets/logo_v2.png";
 
 export default function AuthPage() {
+  const { user, isLoading } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
   const [nickname, setNickname] = useState("");
@@ -19,14 +21,16 @@ export default function AuthPage() {
   const mutation = useMutation({
     mutationFn: (data: { username: string; password: string; nickname?: string }) =>
       apiRequest("POST", isLogin ? "/api/auth/login" : "/api/auth/register", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/me"], data);
       setLocation("/");
     },
     onError: (e: Error) => {
       toast({ title: "错误", description: e.message, variant: "destructive" });
     },
   });
+
+  if (!isLoading && user) return <Redirect to="/" />;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

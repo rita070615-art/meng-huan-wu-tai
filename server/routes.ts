@@ -98,7 +98,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "注册失败，请重试" });
+      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+    });
   });
 
   app.post("/api/auth/login", async (req, res) => {
@@ -118,7 +121,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "登录失败，请重试" });
+      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+    });
   });
 
   app.post("/api/auth/logout", (req, res) => {
