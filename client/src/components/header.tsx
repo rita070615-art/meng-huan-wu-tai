@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Coins, ChevronLeft, Mail, Send, X } from "lucide-react";
+import { Coins, ChevronLeft, Mail, Send, X, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
@@ -98,16 +98,26 @@ export default function Header({ showBack, title }: HeaderProps) {
 
           <div className="flex items-center gap-3">
             {!isAdmin && (
-              <Button
-                variant="ghost"
-                size="icon"
-                data-testid="button-open-pm"
-                onClick={() => setPmOpen(true)}
-                title="私信管理员"
-                className="relative"
-              >
-                <Mail className="w-5 h-5" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-testid="button-open-pm"
+                  onClick={() => setPmOpen(true)}
+                  title="私信管理员"
+                >
+                  <Mail className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  data-testid="button-profile"
+                  onClick={() => setLocation("/profile")}
+                  title="我的"
+                >
+                  <UserCircle className="w-5 h-5" />
+                </Button>
+              </>
             )}
             <div
               className="flex items-center gap-1.5 bg-card border border-card-border rounded-md px-3 py-1.5"

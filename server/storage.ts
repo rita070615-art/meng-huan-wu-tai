@@ -54,6 +54,8 @@ export interface IStorage {
   updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number }): Promise<BotSettings>;
   getShillUsers(): Promise<User[]>;
   setUserShill(id: string, isShill: boolean): Promise<User | undefined>;
+  updateUserPassword(id: string, password: string): Promise<User | undefined>;
+  enableTotp(id: string, secret: string): Promise<User | undefined>;
 
   // Private Messages
   createPrivateMessage(data: { userId: string; userUsername: string; userNickname?: string | null; adminId?: string; adminUsername?: string; content: string; isFromAdmin: boolean }): Promise<PrivateMessage>;
@@ -260,6 +262,16 @@ export class DbStorage implements IStorage {
 
   async setUserShill(id: string, isShill: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ isShill }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async updateUserPassword(id: string, password: string): Promise<User | undefined> {
+    const result = await db.update(users).set({ password }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async enableTotp(id: string, secret: string): Promise<User | undefined> {
+    const result = await db.update(users).set({ totpSecret: secret, totpEnabled: true }).where(eq(users.id, id)).returning();
     return result[0];
   }
 

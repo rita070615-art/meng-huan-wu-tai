@@ -13,6 +13,8 @@ export const users = pgTable("users", {
   banned: boolean("banned").notNull().default(false),
   isShill: boolean("is_shill").notNull().default(false),
   registrationIp: text("registration_ip").default(""),
+  totpSecret: text("totp_secret"),
+  totpEnabled: boolean("totp_enabled").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
