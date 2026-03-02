@@ -61,6 +61,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   };
 
+  const getClientIp = (req: Request): string => {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (forwarded) {
+      const ips = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+      return ips.split(",")[0].trim();
+    }
+    return req.socket?.remoteAddress || req.ip || "";
+  };
+
   // AUTH
   app.post("/api/auth/register", async (req, res) => {
     const schema = z.object({ username: z.string().min(3).max(20), password: z.string().min(4) });
@@ -70,7 +79,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existing = await storage.getUserByUsername(parsed.data.username);
     if (existing) return res.status(400).json({ error: "用户名已存在" });
 
-    const user = await storage.createUser(parsed.data);
+    const clientIp = getClientIp(req);
+    if (clientIp) {
+      const ipUser = await storage.getUserByIp(clientIp);
+      if (ipUser) return res.status(400).json({ error: "该网络已注册过账号，每个IP只能注册一个账号" });
+    }
+
+    const user = await storage.createUser({ ...parsed.data, registrationIp: clientIp });
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.role = user.role;
@@ -85,6 +100,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUserByUsername(parsed.data.username);
     if (!user || user.password !== parsed.data.password) {
       return res.status(401).json({ error: "用户名或密码错误" });
+    }
+    if (user.banned) {
+      return res.status(403).json({ error: "该账号已被封禁，请联系管理员" });
     }
 
     req.session.userId = user.id;
@@ -166,6 +184,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
+    const sender = await storage.getUser(req.session.userId!);
+    if (!sender) return res.status(401).json({ error: "用户不存在" });
+    if (sender.banned) return res.status(403).json({ error: "账号已被封禁" });
+    if (sender.role !== "admin" && sender.balance < 1) {
+      return res.status(403).json({ error: "积分不足，余额需至少 1 分才能发言" });
+    }
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
       userId: req.session.userId,
@@ -175,6 +200,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     broadcast(req.params.id, { type: "MESSAGE", message: msg });
     res.json(msg);
+  });
+
+  app.delete("/api/rooms/:roomId/messages/:messageId", requireAdmin, async (req, res) => {
+    await storage.deleteMessage(req.params.messageId);
+    broadcast(req.params.roomId, { type: "MESSAGE_DELETED", messageId: req.params.messageId });
+    res.json({ ok: true });
   });
 
   // BET ROUNDS
@@ -291,7 +322,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role, notes: u.notes || "" })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
@@ -312,6 +343,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.updateUserNotes(req.params.id, parsed.data.notes);
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json({ id: user.id, username: user.username, notes: user.notes });
+  });
+
+  app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
+    const schema = z.object({ banned: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (target.role === "admin") return res.status(400).json({ error: "不能封禁管理员账号" });
+
+    const user = await storage.banUser(req.params.id, parsed.data.banned);
+    res.json({ id: user!.id, username: user!.username, banned: user!.banned });
   });
 
   // WEBSOCKET

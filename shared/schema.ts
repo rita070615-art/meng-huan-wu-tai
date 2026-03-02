@@ -9,6 +9,8 @@ export const users = pgTable("users", {
   balance: integer("balance").notNull().default(0),
   role: text("role").notNull().default("user"),
   notes: text("notes").default(""),
+  banned: boolean("banned").notNull().default(false),
+  registrationIp: text("registration_ip").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

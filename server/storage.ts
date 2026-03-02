@@ -14,9 +14,11 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { role?: string; balance?: number }): Promise<User>;
+  getUserByIp(ip: string): Promise<User | undefined>;
+  createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string }): Promise<User>;
   updateUserBalance(id: string, balance: number): Promise<User | undefined>;
   updateUserNotes(id: string, notes: string): Promise<User | undefined>;
+  banUser(id: string, banned: boolean): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   // Rooms
@@ -42,6 +44,7 @@ export interface IStorage {
   // Messages
   createMessage(data: { roomId: string; userId?: string; username?: string; content: string; type?: string }): Promise<Message>;
   getMessages(roomId: string, limit?: number): Promise<Message[]>;
+  deleteMessage(id: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -55,7 +58,15 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(user: InsertUser & { role?: string; balance?: number }): Promise<User> {
+  async getUserByIp(ip: string): Promise<User | undefined> {
+    if (!ip) return undefined;
+    const result = await db.select().from(users)
+      .where(eq(users.registrationIp, ip))
+      .limit(1);
+    return result[0];
+  }
+
+  async createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string }): Promise<User> {
     const id = randomUUID();
     const result = await db.insert(users).values({
       id,
@@ -63,6 +74,7 @@ export class DbStorage implements IStorage {
       password: user.password,
       role: user.role || "user",
       balance: user.balance ?? 0,
+      registrationIp: user.registrationIp || "",
     }).returning();
     return result[0];
   }
@@ -74,6 +86,11 @@ export class DbStorage implements IStorage {
 
   async updateUserNotes(id: string, notes: string): Promise<User | undefined> {
     const result = await db.update(users).set({ notes }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async banUser(id: string, banned: boolean): Promise<User | undefined> {
+    const result = await db.update(users).set({ banned }).where(eq(users.id, id)).returning();
     return result[0];
   }
 
@@ -177,6 +194,10 @@ export class DbStorage implements IStorage {
       .orderBy(desc(messages.createdAt))
       .limit(limit);
     return result.reverse();
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    await db.delete(messages).where(eq(messages.id, id));
   }
 }
 

@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck
 } from "lucide-react";
 import type { Room, BetRound, BetOption } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; balance: number; role: string; notes: string };
+type AdminUser = { id: string; username: string; balance: number; role: string; notes: string; banned: boolean };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -460,6 +460,16 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
   });
 
+  const banMutation = useMutation({
+    mutationFn: ({ id, banned }: { id: string; banned: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/ban`, { banned }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: vars.banned ? "账号已封禁" : "账号已解封" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div>
       <h2 className="font-semibold mb-3 flex items-center gap-2">
@@ -484,7 +494,14 @@ function UsersAdmin() {
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{u.username}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium truncate">{u.username}</p>
+                    {u.banned && (
+                      <span className="text-xs font-medium text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
+                        已封禁
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {u.role === "admin" ? "管理员" : "普通用户"}
                   </p>
@@ -536,6 +553,19 @@ function UsersAdmin() {
                     >
                       <Coins className="w-3.5 h-3.5" />
                     </Button>
+                    {u.role !== "admin" && (
+                      <Button
+                        size="sm"
+                        variant={u.banned ? "secondary" : "outline"}
+                        data-testid={`button-ban-${u.id}`}
+                        onClick={() => banMutation.mutate({ id: u.id, banned: !u.banned })}
+                        disabled={banMutation.isPending}
+                        title={u.banned ? "解除封禁" : "封禁账号"}
+                        className={u.banned ? "" : "hover:border-destructive hover:text-destructive"}
+                      >
+                        {u.banned ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" /> : <Ban className="w-3.5 h-3.5" />}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

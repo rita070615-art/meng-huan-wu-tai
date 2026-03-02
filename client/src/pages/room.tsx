@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare } from "lucide-react";
+import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2 } from "lucide-react";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
 type BetRoundWithBets = BetRound & { bets: Bet[]; options: BetOption[] };
@@ -76,6 +76,9 @@ export default function RoomPage() {
         if (data.type === "MESSAGE" && data.message) {
           setLiveMessages((prev) => [...prev, data.message]);
         }
+        if (data.type === "MESSAGE_DELETED" && data.messageId) {
+          setLiveMessages((prev) => prev.filter((m) => m.id !== data.messageId));
+        }
         if (data.type === "NEW_BET" && data.bet) {
           setLiveBets((prev) => [data.bet, ...prev].slice(0, 50));
         }
@@ -105,10 +108,17 @@ export default function RoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [liveMessages]);
 
+  const { isAdmin } = useAuth();
+
   const sendMutation = useMutation({
     mutationFn: (content: string) => apiRequest("POST", `/api/rooms/${roomId}/messages`, { content }),
     onSuccess: () => setMessageText(""),
     onError: (e: Error) => toast({ title: "发送失败", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMessageMutation = useMutation({
+    mutationFn: (messageId: string) => apiRequest("DELETE", `/api/rooms/${roomId}/messages/${messageId}`),
+    onError: (e: Error) => toast({ title: "删除失败", description: e.message, variant: "destructive" }),
   });
 
   const betMutation = useMutation({
@@ -168,26 +178,39 @@ export default function RoomPage() {
               </div>
             ) : (
               displayMessages.map((msg) => (
-                <ChatMessage key={msg.id} msg={msg} currentUserId={user?.id} />
+                <ChatMessage
+                  key={msg.id}
+                  msg={msg}
+                  currentUserId={user?.id}
+                  isAdmin={isAdmin}
+                  onDelete={isAdmin ? (id) => deleteMessageMutation.mutate(id) : undefined}
+                />
               ))
             )}
             <div ref={messagesEndRef} />
           </div>
+
+          {user && user.balance < 1 && !isAdmin && (
+            <div className="px-3 py-2 bg-destructive/10 border-t border-destructive/20 text-xs text-destructive text-center">
+              余额不足，需至少 1 分才能发言
+            </div>
+          )}
 
           <form onSubmit={handleSend} className="p-3 border-t border-border flex gap-2">
             <Input
               data-testid="input-message"
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
-              placeholder="输入消息..."
+              placeholder={user && user.balance < 1 && !isAdmin ? "余额不足，无法发言" : "输入消息..."}
               className="flex-1 bg-card border-card-border"
               autoComplete="off"
+              disabled={!!(user && user.balance < 1 && !isAdmin)}
             />
             <Button
               type="submit"
               size="icon"
               data-testid="button-send"
-              disabled={sendMutation.isPending || !messageText.trim()}
+              disabled={sendMutation.isPending || !messageText.trim() || !!(user && user.balance < 1 && !isAdmin)}
             >
               <Send className="w-4 h-4" />
             </Button>
@@ -379,7 +402,17 @@ export default function RoomPage() {
   );
 }
 
-function ChatMessage({ msg, currentUserId }: { msg: Message; currentUserId?: string }) {
+function ChatMessage({
+  msg,
+  currentUserId,
+  isAdmin,
+  onDelete,
+}: {
+  msg: Message;
+  currentUserId?: string;
+  isAdmin?: boolean;
+  onDelete?: (id: string) => void;
+}) {
   const isSystem = msg.type === "system";
   const isOwn = msg.userId === currentUserId;
 
@@ -394,19 +427,41 @@ function ChatMessage({ msg, currentUserId }: { msg: Message; currentUserId?: str
   }
 
   return (
-    <div className={`flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
+    <div className={`group flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
       {!isOwn && (
         <span className="text-xs text-muted-foreground mb-0.5 ml-1">{msg.username}</span>
       )}
-      <div
-        data-testid={`message-${msg.id}`}
-        className={`max-w-xs lg:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
-          isOwn
-            ? "bg-primary text-primary-foreground rounded-br-sm"
-            : "bg-card border border-card-border rounded-bl-sm"
-        }`}
-      >
-        {msg.content}
+      <div className="flex items-end gap-1.5">
+        {isAdmin && !isOwn && (
+          <button
+            data-testid={`button-delete-message-${msg.id}`}
+            onClick={() => onDelete?.(msg.id)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0 mb-1"
+            title="删除消息"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+        <div
+          data-testid={`message-${msg.id}`}
+          className={`max-w-xs lg:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
+            isOwn
+              ? "bg-primary text-primary-foreground rounded-br-sm"
+              : "bg-card border border-card-border rounded-bl-sm"
+          }`}
+        >
+          {msg.content}
+        </div>
+        {isAdmin && isOwn && (
+          <button
+            data-testid={`button-delete-message-${msg.id}`}
+            onClick={() => onDelete?.(msg.id)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0 mb-1"
+            title="删除消息"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
