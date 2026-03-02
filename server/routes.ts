@@ -207,7 +207,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const room = await storage.createRoom({ ...parsed.data, createdBy: req.session.userId! });
     await storage.createMessage({ roomId: room.id, content: `欢迎来到 ${room.name}！`, type: "system" });
-    await storage.createMessage({ roomId: room.id, content: "开始下注吧！", type: "system" });
+    await storage.createMessage({ roomId: room.id, content: "开始点餐吧！", type: "system" });
     broadcastAll({ type: "ROOM_CREATED", room });
     res.json(room);
   });
