@@ -525,32 +525,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
 
-    // Auto-bet: trigger shill accounts if bot is enabled
+    // Auto-bet: trigger shill accounts with staggered random delays to mimic real users
     try {
       const botCfg = await storage.getBotSettings();
       if (botCfg.enabled) {
         const shills = await storage.getShillUsers();
-        for (const shill of shills) {
-          const amount = Math.floor(Math.random() * (botCfg.maxAmount - botCfg.minAmount + 1)) + botCfg.minAmount;
-          if (shill.balance < amount) {
-            const warnMsg = await storage.createMessage({
-              roomId: req.params.id,
-              content: `⚠️ @${shill.username} 积分不足（${shill.balance}），此条无效`,
-              type: "system",
-            });
-            broadcast(req.params.id, { type: "MESSAGE", message: warnMsg });
-            continue;
-          }
-          const randomOption = (options as Array<{ key: string }>)[Math.floor(Math.random() * options.length)].key;
-          const bet = await storage.placeBet({
-            roundId: round.id,
-            roomId: req.params.id,
-            userId: shill.id,
-            username: shill.username,
-            option: randomOption,
-            amount,
-          });
-          broadcast(req.params.id, { type: "NEW_BET", bet });
+        // Shuffle shills so order is random each round
+        const shuffled = [...shills].sort(() => Math.random() - 0.5);
+        // Assign each shill a unique random delay (5s–90s), spread out so they don't overlap
+        let usedDelays: number[] = [];
+        for (const shill of shuffled) {
+          // Pick a delay not too close to any already used
+          let delay: number;
+          let attempts = 0;
+          do {
+            delay = Math.floor(Math.random() * 85000) + 5000; // 5s–90s in ms
+            attempts++;
+          } while (usedDelays.some(d => Math.abs(d - delay) < 3000) && attempts < 20);
+          usedDelays.push(delay);
+
+          const shillId = shill.id;
+          const shillUsername = shill.username;
+          const shillBalance = shill.balance;
+          const roomId = req.params.id;
+          const roundId = round.id;
+          const optionsList = options as Array<{ key: string }>;
+
+          setTimeout(async () => {
+            try {
+              // Verify the round is still active before placing bet
+              const activeRound = await storage.getActiveBetRound(roomId);
+              if (!activeRound || activeRound.id !== roundId) return;
+
+              const amount = Math.floor(Math.random() * (botCfg.maxAmount - botCfg.minAmount + 1)) + botCfg.minAmount;
+              if (shillBalance < amount) {
+                const warnMsg = await storage.createMessage({
+                  roomId,
+                  content: `⚠️ @${shillUsername} 积分不足（${shillBalance}），此条无效`,
+                  type: "system",
+                });
+                broadcast(roomId, { type: "MESSAGE", message: warnMsg });
+                return;
+              }
+              const randomOption = optionsList[Math.floor(Math.random() * optionsList.length)].key;
+              const bet = await storage.placeBet({
+                roundId,
+                roomId,
+                userId: shillId,
+                username: shillUsername,
+                option: randomOption,
+                amount,
+              });
+              broadcast(roomId, { type: "NEW_BET", bet });
+            } catch (e) {
+              console.error(`Shill auto-bet error (${shillUsername}):`, e);
+            }
+          }, delay);
         }
       }
     } catch (e) {
