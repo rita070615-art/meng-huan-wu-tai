@@ -14,10 +14,12 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByNickname(nickname: string): Promise<User | undefined>;
   getUserByIp(ip: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string }): Promise<User>;
+  createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string; nickname?: string }): Promise<User>;
   updateUserBalance(id: string, balance: number): Promise<User | undefined>;
   updateUserNotes(id: string, notes: string): Promise<User | undefined>;
+  updateUserNickname(id: string, nickname: string): Promise<User | undefined>;
   banUser(id: string, banned: boolean): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
@@ -64,6 +66,11 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async getUserByNickname(nickname: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.nickname, nickname)).limit(1);
+    return result[0];
+  }
+
   async getUserByIp(ip: string): Promise<User | undefined> {
     if (!ip) return undefined;
     const result = await db.select().from(users)
@@ -72,16 +79,22 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string }): Promise<User> {
+  async createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string; nickname?: string }): Promise<User> {
     const id = randomUUID();
     const result = await db.insert(users).values({
       id,
       username: user.username,
+      nickname: user.nickname || null,
       password: user.password,
       role: user.role || "user",
       balance: user.balance ?? 0,
       registrationIp: user.registrationIp || "",
     }).returning();
+    return result[0];
+  }
+
+  async updateUserNickname(id: string, nickname: string): Promise<User | undefined> {
+    const result = await db.update(users).set({ nickname: nickname || null }).where(eq(users.id, id)).returning();
     return result[0];
   }
 

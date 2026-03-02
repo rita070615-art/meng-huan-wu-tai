@@ -11,12 +11,13 @@ import logoImg from "@assets/logo_v2.png";
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState("");
+  const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const mutation = useMutation({
-    mutationFn: (data: { username: string; password: string }) =>
+    mutationFn: (data: { username: string; password: string; nickname?: string }) =>
       apiRequest("POST", isLogin ? "/api/auth/login" : "/api/auth/register", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -29,7 +30,18 @@ export default function AuthPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    mutation.mutate({ username, password });
+    if (!isLogin && !nickname.trim()) {
+      toast({ title: "请填写昵称", variant: "destructive" });
+      return;
+    }
+    mutation.mutate(isLogin ? { username, password } : { username, nickname: nickname.trim(), password });
+  };
+
+  const switchTab = (login: boolean) => {
+    setIsLogin(login);
+    setUsername("");
+    setNickname("");
+    setPassword("");
   };
 
   return (
@@ -55,7 +67,7 @@ export default function AuthPage() {
             <button
               type="button"
               data-testid="tab-login"
-              onClick={() => setIsLogin(true)}
+              onClick={() => switchTab(true)}
               className={`flex-1 py-1.5 text-sm font-medium rounded transition-all ${
                 isLogin ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
               }`}
@@ -65,7 +77,7 @@ export default function AuthPage() {
             <button
               type="button"
               data-testid="tab-register"
-              onClick={() => setIsLogin(false)}
+              onClick={() => switchTab(false)}
               className={`flex-1 py-1.5 text-sm font-medium rounded transition-all ${
                 !isLogin ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
               }`}
@@ -82,11 +94,32 @@ export default function AuthPage() {
                 data-testid="input-username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="请输入用户名"
+                placeholder="请输入用户名（登录用）"
                 autoComplete="username"
                 className="bg-background border-border"
               />
             </div>
+
+            {!isLogin && (
+              <div className="space-y-1.5">
+                <Label htmlFor="nickname" className="text-sm text-muted-foreground">
+                  昵称
+                  <span className="text-destructive ml-0.5">*</span>
+                </Label>
+                <Input
+                  id="nickname"
+                  data-testid="input-nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="您的显示名称（不能重复）"
+                  maxLength={20}
+                  autoComplete="off"
+                  className="bg-background border-border"
+                />
+                <p className="text-xs text-muted-foreground">昵称用于聊天室显示，注册后可由管理员修改</p>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="password" className="text-sm text-muted-foreground">密码</Label>
               <Input

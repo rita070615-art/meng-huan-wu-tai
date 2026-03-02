@@ -9,6 +9,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     username: string;
+    nickname: string;
     role: string;
   }
 }
@@ -72,12 +73,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // AUTH
   app.post("/api/auth/register", async (req, res) => {
-    const schema = z.object({ username: z.string().min(3).max(20), password: z.string().min(4) });
+    const schema = z.object({
+      username: z.string().min(3).max(20),
+      nickname: z.string().min(1).max(20),
+      password: z.string().min(4),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
     const existing = await storage.getUserByUsername(parsed.data.username);
     if (existing) return res.status(400).json({ error: "用户名已存在" });
+
+    const existingNick = await storage.getUserByNickname(parsed.data.nickname);
+    if (existingNick) return res.status(400).json({ error: "昵称已被使用，请换一个" });
 
     const clientIp = getClientIp(req);
     if (clientIp) {
@@ -88,8 +96,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.createUser({ ...parsed.data, registrationIp: clientIp });
     req.session.userId = user.id;
     req.session.username = user.username;
+    req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
   });
 
   app.post("/api/auth/login", async (req, res) => {
@@ -107,8 +116,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     req.session.userId = user.id;
     req.session.username = user.username;
+    req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
   });
 
   app.post("/api/auth/logout", (req, res) => {
@@ -119,7 +129,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.session.userId) return res.json(null);
     const user = await storage.getUser(req.session.userId);
     if (!user) return res.json(null);
-    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
   });
 
   // ROOMS
@@ -204,7 +214,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const msg = await storage.createMessage({
       roomId: req.params.id,
       userId: req.session.userId,
-      username: req.session.username,
+      username: sender.nickname || sender.username,
       content: parsed.data.content,
       type: "user",
     });
@@ -386,6 +396,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.updateUserNotes(req.params.id, parsed.data.notes);
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json({ id: user.id, username: user.username, notes: user.notes });
+  });
+
+  app.patch("/api/admin/users/:id/nickname", requireAdmin, async (req, res) => {
+    const schema = z.object({ nickname: z.string().max(20) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    if (parsed.data.nickname) {
+      const existing = await storage.getUserByNickname(parsed.data.nickname);
+      if (existing && existing.id !== req.params.id) return res.status(400).json({ error: "昵称已被使用" });
+    }
+
+    const user = await storage.updateUserNickname(req.params.id, parsed.data.nickname);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ id: user.id, username: user.username, nickname: user.nickname });
   });
 
   app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {

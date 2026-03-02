@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; balance: number; role: string; notes: string; banned: boolean; isShill: boolean };
+type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; isShill: boolean };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -530,6 +530,8 @@ function UsersAdmin() {
   const [editBalance, setEditBalance] = useState("");
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
+  const [editingNickname, setEditingNickname] = useState<string | null>(null);
+  const [editNickname, setEditNickname] = useState("");
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -578,6 +580,17 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
+  const updateNicknameMutation = useMutation({
+    mutationFn: ({ id, nickname }: { id: string; nickname: string }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/nickname`, { nickname }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setEditingNickname(null);
+      toast({ title: "昵称已更新" });
+    },
+    onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div>
       <h2 className="font-semibold mb-3 flex items-center gap-2">
@@ -603,11 +616,48 @@ function UsersAdmin() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium truncate">{u.username}</p>
+                    {/* Nickname (primary display) */}
+                    {editingNickname === u.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          data-testid={`input-nickname-${u.id}`}
+                          value={editNickname}
+                          onChange={(e) => setEditNickname(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") updateNicknameMutation.mutate({ id: u.id, nickname: editNickname });
+                            if (e.key === "Escape") setEditingNickname(null);
+                          }}
+                          maxLength={20}
+                          autoFocus
+                          className="h-6 w-28 text-sm px-2 py-0"
+                        />
+                        <button
+                          data-testid={`button-save-nickname-${u.id}`}
+                          onClick={() => updateNicknameMutation.mutate({ id: u.id, nickname: editNickname })}
+                          disabled={updateNicknameMutation.isPending}
+                          className="text-primary hover:opacity-80 transition-opacity"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setEditingNickname(null)} className="text-muted-foreground hover:text-foreground">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        data-testid={`button-edit-nickname-${u.id}`}
+                        onClick={() => { setEditingNickname(u.id); setEditNickname(u.nickname || ""); }}
+                        className="flex items-center gap-1 group"
+                        title="点击修改昵称"
+                      >
+                        <p className="font-medium truncate">{u.nickname || <span className="text-muted-foreground italic text-sm">未设置昵称</span>}</p>
+                        <Edit2 className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </button>
+                    )}
                     {u.isShill && (
-                      <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                      <span className="text-xs font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
                         <Bot className="w-3 h-3" />
-                        托
+                        托·开启
                       </span>
                     )}
                     {u.banned && (
@@ -616,8 +666,8 @@ function UsersAdmin() {
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {u.role === "admin" ? "管理员" : "普通用户"}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    @{u.username} · {u.role === "admin" ? "管理员" : "普通用户"}
                   </p>
                 </div>
 
@@ -670,12 +720,14 @@ function UsersAdmin() {
                     {u.role !== "admin" && (
                       <Button
                         size="sm"
-                        variant={u.isShill ? "secondary" : "outline"}
                         data-testid={`button-shill-${u.id}`}
                         onClick={() => shillMutation.mutate({ id: u.id, isShill: !u.isShill })}
                         disabled={shillMutation.isPending}
-                        title={u.isShill ? "取消托身份" : "设为托"}
-                        className={u.isShill ? "border-purple-500/50 text-purple-400" : "hover:border-purple-500/50 hover:text-purple-400"}
+                        title={u.isShill ? "点击关闭（当前托·开启）" : "点击开启托身份"}
+                        className={u.isShill
+                          ? "bg-green-500/20 border border-green-500 text-green-400 hover:bg-green-500/30"
+                          : "bg-transparent border border-border text-muted-foreground hover:border-green-500/60 hover:text-green-400"
+                        }
                       >
                         <Bot className="w-3.5 h-3.5" />
                       </Button>
