@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen
@@ -197,6 +198,7 @@ function RoomsAdmin() {
                 {selectedRoom === room.id && (
                   <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4 space-y-3">
                     <RoomPasswordManager room={room} />
+                    <ClearMessagesButton roomId={room.id} />
                     <BetRoundManager roomId={room.id} />
                   </div>
                 )}
@@ -210,6 +212,87 @@ function RoomsAdmin() {
         )}
       </div>
     </div>
+  );
+}
+
+function ClearMessagesButton({ roomId }: { roomId: string }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [confirmPw, setConfirmPw] = useState("");
+
+  const clearMutation = useMutation({
+    mutationFn: (confirmPassword: string) =>
+      apiRequest("DELETE", `/api/admin/rooms/${roomId}/messages`, { confirmPassword }),
+    onSuccess: () => {
+      setOpen(false);
+      setConfirmPw("");
+      toast({ title: "聊天记录已清除" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <>
+      <div className="bg-card border border-card-border rounded-lg p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-destructive" />
+            <h3 className="font-semibold text-sm">清除聊天记录</h3>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid={`button-clear-messages-${roomId}`}
+            className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            onClick={() => { setConfirmPw(""); setOpen(true); }}
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-1" />
+            一键清除
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={open} onOpenChange={(v) => { if (!v) { setConfirmPw(""); } setOpen(v); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-4 h-4" />
+              确认清除聊天记录
+            </DialogTitle>
+            <DialogDescription>
+              此操作将删除该聊天室的<strong>全部消息</strong>，且无法恢复。<br />
+              请输入您的账号登录密码确认操作。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <Input
+              data-testid={`input-confirm-password-${roomId}`}
+              type="password"
+              value={confirmPw}
+              onChange={(e) => setConfirmPw(e.target.value)}
+              placeholder="输入您的登录密码"
+              autoFocus
+              autoComplete="current-password"
+              onKeyDown={(e) => { if (e.key === "Enter" && confirmPw) clearMutation.mutate(confirmPw); }}
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => { setOpen(false); setConfirmPw(""); }}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                data-testid={`button-confirm-clear-${roomId}`}
+                disabled={!confirmPw || clearMutation.isPending}
+                onClick={() => clearMutation.mutate(confirmPw)}
+              >
+                {clearMutation.isPending ? "清除中..." : "确认清除"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

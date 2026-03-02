@@ -279,6 +279,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  app.delete("/api/admin/rooms/:id/messages", requireAdmin, async (req, res) => {
+    const schema = z.object({ confirmPassword: z.string() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "请提供确认密码" });
+
+    const admin = await storage.getUser(req.session.userId!);
+    if (!admin || admin.password !== parsed.data.confirmPassword) {
+      return res.status(403).json({ error: "密码错误，操作取消" });
+    }
+
+    await storage.clearMessages(req.params.id);
+    broadcast(req.params.id, { type: "MESSAGES_CLEARED" });
+    res.json({ ok: true });
+  });
+
   // BET ROUNDS
   app.get("/api/rooms/:id/bet-round", requireAuth, async (req, res) => {
     if (!await checkRoomAccess(req, res, req.params.id)) return;

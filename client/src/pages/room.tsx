@@ -86,6 +86,9 @@ export default function RoomPage() {
         if (data.type === "MESSAGE_DELETED" && data.messageId) {
           setLiveMessages((prev) => prev.filter((m) => m.id !== data.messageId));
         }
+        if (data.type === "MESSAGES_CLEARED") {
+          setLiveMessages([]);
+        }
         if (data.type === "NEW_BET" && data.bet) {
           setLiveBets((prev) => [data.bet, ...prev].slice(0, 50));
         }

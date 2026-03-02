@@ -47,6 +47,7 @@ export interface IStorage {
   createMessage(data: { roomId: string; userId?: string; username?: string; content: string; type?: string }): Promise<Message>;
   getMessages(roomId: string, limit?: number): Promise<Message[]>;
   deleteMessage(id: string): Promise<void>;
+  clearMessages(roomId: string): Promise<void>;
 
   // Bot Settings
   getBotSettings(): Promise<BotSettings>;
@@ -217,6 +218,10 @@ export class DbStorage implements IStorage {
 
   async deleteMessage(id: string): Promise<void> {
     await db.delete(messages).where(eq(messages.id, id));
+  }
+
+  async clearMessages(roomId: string): Promise<void> {
+    await db.delete(messages).where(eq(messages.roomId, roomId));
   }
 
   async getBotSettings(): Promise<BotSettings> {
