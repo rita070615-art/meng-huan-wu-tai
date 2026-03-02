@@ -520,7 +520,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: "点餐已开始！请选择您的选项。",
+      content: "今日菜单已开放，请选择您的口味。",
       type: "system",
     });
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
@@ -596,7 +596,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `点餐已结束！获胜选项：${winnerOpt?.label || parsed.data.winnerOption}。奖池共 ${totalPool} 金币，已分配给胜者。`,
+      content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || parsed.data.winnerOption}\n感谢参与点餐体验。`,
       type: "system",
     });
 

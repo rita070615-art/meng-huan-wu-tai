@@ -657,10 +657,16 @@ function ChatMessage({
   }, [showMenu]);
 
   if (isSystem) {
+    const lines = msg.content.split("\n");
     return (
       <div className="flex justify-center my-2">
-        <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1 rounded-full max-w-sm text-center">
-          {msg.content}
+        <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg max-w-sm text-center">
+          {lines.map((line, i) => (
+            <span key={i}>
+              {line}
+              {i < lines.length - 1 && <br />}
+            </span>
+          ))}
         </span>
       </div>
     );
