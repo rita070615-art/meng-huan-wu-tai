@@ -1,4 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -6,6 +9,33 @@ import { createServer } from "http";
 const app = express();
 app.set("trust proxy", true);
 const httpServer = createServer(app);
+
+app.use(helmet({ contentSecurityPolicy: false }));
+
+app.use(cors({
+  origin: true,
+  credentials: true,
+}));
+
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "请求过于频繁，请稍后再试" },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "登录尝试过多，请 15 分钟后再试" },
+});
+
+app.use("/api", generalLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
 
 declare module "http" {
   interface IncomingMessage {
