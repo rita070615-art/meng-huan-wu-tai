@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2 } from "lucide-react";
+import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2, MicOff, Ban, Settings, Play, Square, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
+import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
 type BetRoundWithBets = BetRound & { bets: Bet[]; options: BetOption[] };
@@ -28,6 +29,8 @@ export default function RoomPage() {
   const [liveBets, setLiveBets] = useState<Bet[]>([]);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [liveRound, setLiveRound] = useState<BetRoundWithBets | null | undefined>(undefined);
+  const [chatMuted, setChatMuted] = useState(false);
+  const [adminPanelOpen, setAdminPanelOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -57,6 +60,10 @@ export default function RoomPage() {
   useEffect(() => {
     if (messages) setLiveMessages(messages);
   }, [messages]);
+
+  useEffect(() => {
+    if (room) setChatMuted(!!(room as any).chatMuted);
+  }, [room]);
 
   useEffect(() => {
     if (betRoundData !== undefined) {
@@ -108,6 +115,9 @@ export default function RoomPage() {
         if (data.type === "BET_OPTIONS_UPDATED" && data.round) {
           setLiveRound((prev) => prev ? { ...prev, options: data.round.options } : null);
         }
+        if (data.type === "ROOM_CHAT_MUTED") {
+          setChatMuted(data.chatMuted);
+        }
       } catch {}
     };
 
@@ -135,11 +145,47 @@ export default function RoomPage() {
     mutationFn: (data: { option: string; amount: number }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bets`, data),
     onSuccess: () => {
-      toast({ title: "下注成功！" });
+      toast({ title: "点餐成功！" });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
     },
-    onError: (e: Error) => toast({ title: "下注失败", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "点餐失败", description: e.message, variant: "destructive" }),
+  });
+
+  const muteChatMutation = useMutation({
+    mutationFn: (muted: boolean) => apiRequest("PATCH", `/api/admin/rooms/${roomId}/chat-mute`, { chatMuted: muted }),
+    onSuccess: (_, muted) => toast({ title: muted ? "聊天室已全体禁言" : "已解除全体禁言" }),
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const startRoundMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round`, {}),
+    onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
+  });
+
+  const closeRoundMutation = useMutation({
+    mutationFn: (winnerOption: string) => apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption }),
+    onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
+  });
+
+  const muteUserMutation = useMutation({
+    mutationFn: ({ id, muted }: { id: string; muted: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/mute`, { muted }),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: v.muted ? "已禁言该用户" : "已解除禁言" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const banUserMutation = useMutation({
+    mutationFn: ({ id, banned }: { id: string; banned: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/ban`, { banned }),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: v.banned ? "已封禁该用户" : "已解封该用户" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
   const handleSend = (e: React.FormEvent) => {
@@ -149,7 +195,7 @@ export default function RoomPage() {
   };
 
   const handleBet = () => {
-    if (!selectedOption) return toast({ title: "请选择下注选项", variant: "destructive" });
+    if (!selectedOption) return toast({ title: "请选择菜单选项", variant: "destructive" });
     const amt = parseInt(betAmount);
     if (!amt || amt < 1) return toast({ title: "请输入有效金额", variant: "destructive" });
     betMutation.mutate({ option: selectedOption, amount: amt });
@@ -175,12 +221,95 @@ export default function RoomPage() {
     return acc;
   }, {} as Record<string, number>);
 
+  const chatDisabled = !isAdmin && chatMuted;
+  const chatPlaceholder = chatMuted && !isAdmin ? "聊天室已被禁言" : (user && user.balance < 1 && !isAdmin ? "余额不足，无法发言" : "输入消息...");
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
 
+      {isAdmin && (
+        <div className="border-b border-border bg-primary/5">
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <ShieldAlert className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="text-xs font-semibold text-primary">管理控制台</span>
+            <div className="flex items-center gap-1.5 ml-auto">
+              <Button
+                size="sm"
+                variant={chatMuted ? "destructive" : "outline"}
+                className="h-6 px-2 text-xs"
+                data-testid="button-admin-chat-mute"
+                disabled={muteChatMutation.isPending}
+                onClick={() => muteChatMutation.mutate(!chatMuted)}
+              >
+                <MicOff className="w-3 h-3 mr-1" />
+                {chatMuted ? "解除禁言" : "全体禁言"}
+              </Button>
+              {currentRound ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-xs hover:border-amber-500 hover:text-amber-500"
+                  data-testid="button-admin-toggle-panel"
+                  onClick={() => setAdminPanelOpen(v => !v)}
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  {adminPanelOpen ? "收起" : "点餐设置"}
+                  {adminPanelOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-xs hover:border-green-500 hover:text-green-500"
+                  data-testid="button-admin-start-round"
+                  disabled={startRoundMutation.isPending}
+                  onClick={() => startRoundMutation.mutate()}
+                >
+                  <Play className="w-3 h-3 mr-1" />
+                  开启点餐
+                </Button>
+              )}
+              <Link href="/admin">
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" data-testid="button-admin-panel-link">
+                  <LayoutDashboard className="w-3 h-3 mr-1" />
+                  后台
+                </Button>
+              </Link>
+            </div>
+          </div>
+          {isAdmin && adminPanelOpen && currentRound && (
+            <div className="px-3 pb-2 border-t border-border/50">
+              <div className="flex items-center gap-2 flex-wrap pt-2">
+                <span className="text-xs text-muted-foreground">点餐进行中 — 选择获胜选项结束：</span>
+                {(currentRound.options as BetOption[]).map((opt) => (
+                  <Button
+                    key={opt.key}
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-xs"
+                    style={{ borderColor: opt.color, color: opt.color }}
+                    disabled={closeRoundMutation.isPending}
+                    onClick={() => { closeRoundMutation.mutate(opt.key); setAdminPanelOpen(false); }}
+                    data-testid={`button-admin-close-round-${opt.key}`}
+                  >
+                    {opt.label} 获胜
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex overflow-hidden flex-1">
         <div className={`flex-1 flex flex-col min-w-0 border-r border-border ${mobileTab === "bet" ? "hidden md:flex" : "flex"}`}>
+          {chatMuted && !isAdmin && (
+            <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
+              <MicOff className="w-3.5 h-3.5" />
+              管理员已开启全体禁言
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-messages">
             {msgsLoading ? (
               <div className="space-y-3">
@@ -194,6 +323,8 @@ export default function RoomPage() {
                   currentUserId={user?.id}
                   isAdmin={isAdmin}
                   onDelete={isAdmin ? (id) => deleteMessageMutation.mutate(id) : undefined}
+                  onMuteUser={isAdmin ? (id) => muteUserMutation.mutate({ id, muted: true }) : undefined}
+                  onBanUser={isAdmin ? (id) => banUserMutation.mutate({ id, banned: true }) : undefined}
                 />
               ))
             )}
@@ -211,16 +342,16 @@ export default function RoomPage() {
               data-testid="input-message"
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
-              placeholder={user && user.balance < 1 && !isAdmin ? "余额不足，无法发言" : "输入消息..."}
+              placeholder={chatPlaceholder}
               className="flex-1 bg-card border-card-border"
               autoComplete="off"
-              disabled={!!(user && user.balance < 1 && !isAdmin)}
+              disabled={chatDisabled || !!(user && user.balance < 1 && !isAdmin)}
             />
             <Button
               type="submit"
               size="icon"
               data-testid="button-send"
-              disabled={sendMutation.isPending || !messageText.trim() || !!(user && user.balance < 1 && !isAdmin)}
+              disabled={sendMutation.isPending || !messageText.trim() || chatDisabled || !!(user && user.balance < 1 && !isAdmin)}
             >
               <Send className="w-4 h-4" />
             </Button>
@@ -299,7 +430,7 @@ export default function RoomPage() {
                   size="sm"
                   className="h-9 px-4 shrink-0"
                 >
-                  {betMutation.isPending ? "..." : userAlreadyBet ? "已下注" : "下注"}
+                  {betMutation.isPending ? "..." : userAlreadyBet ? "已点餐" : "点餐"}
                 </Button>
               </div>
 
@@ -403,7 +534,7 @@ export default function RoomPage() {
           }`}
         >
           <TrendingUp className="w-5 h-5" />
-          下注
+          点餐
           {currentRound && (
             <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-primary animate-pulse" />
           )}
@@ -418,14 +549,29 @@ function ChatMessage({
   currentUserId,
   isAdmin,
   onDelete,
+  onMuteUser,
+  onBanUser,
 }: {
   msg: Message;
   currentUserId?: string;
   isAdmin?: boolean;
   onDelete?: (id: string) => void;
+  onMuteUser?: (userId: string) => void;
+  onBanUser?: (userId: string) => void;
 }) {
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
   const isOwn = msg.userId === currentUserId;
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setShowMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showMenu]);
 
   if (isSystem) {
     return (
@@ -440,10 +586,47 @@ function ChatMessage({
   return (
     <div className={`group flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
       {!isOwn && (
-        <span className="text-xs text-muted-foreground mb-0.5 ml-1">{msg.username}</span>
+        <div className="relative">
+          <button
+            className="text-xs text-muted-foreground mb-0.5 ml-1 hover:text-foreground transition-colors"
+            onClick={() => isAdmin && setShowMenu(v => !v)}
+            data-testid={`username-${msg.userId}`}
+          >
+            {msg.username}
+            {isAdmin && <span className="ml-0.5 opacity-40">▾</span>}
+          </button>
+          {showMenu && isAdmin && msg.userId && (
+            <div
+              ref={menuRef}
+              className="absolute left-0 top-5 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[120px]"
+            >
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-amber-500"
+                onClick={() => { onMuteUser?.(msg.userId!); setShowMenu(false); }}
+                data-testid={`menu-mute-${msg.userId}`}
+              >
+                <MicOff className="w-3 h-3" /> 禁言
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
+                onClick={() => { onBanUser?.(msg.userId!); setShowMenu(false); }}
+                data-testid={`menu-ban-${msg.userId}`}
+              >
+                <Ban className="w-3 h-3" /> 封号
+              </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-muted-foreground"
+                onClick={() => { onDelete?.(msg.id); setShowMenu(false); }}
+                data-testid={`menu-delete-${msg.id}`}
+              >
+                <Trash2 className="w-3 h-3" /> 删除消息
+              </button>
+            </div>
+          )}
+        </div>
       )}
       <div className="flex items-end gap-1.5">
-        {isAdmin && !isOwn && (
+        {isAdmin && isOwn && (
           <button
             data-testid={`button-delete-message-${msg.id}`}
             onClick={() => onDelete?.(msg.id)}
@@ -463,7 +646,7 @@ function ChatMessage({
         >
           {msg.content}
         </div>
-        {isAdmin && isOwn && (
+        {isAdmin && !isOwn && (
           <button
             data-testid={`button-delete-message-${msg.id}`}
             onClick={() => onDelete?.(msg.id)}

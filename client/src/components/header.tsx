@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Coins, ChevronLeft, Mail, Send, X, UserCircle } from "lucide-react";
+import { Coins, ChevronLeft, Mail, Send, X, UserCircle, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +23,8 @@ type PmMessage = {
   createdAt: string;
 };
 
+type PmThread = { userId: string; unread: number };
+
 export default function Header({ showBack, title }: HeaderProps) {
   const { user, isAdmin } = useAuth();
   const { toast } = useToast();
@@ -36,6 +38,22 @@ export default function Header({ showBack, title }: HeaderProps) {
     enabled: pmOpen && !!user && !isAdmin,
     refetchInterval: pmOpen ? 5000 : false,
   });
+
+  // Count unread PMs for non-admin users (messages from admin that haven't been read)
+  const { data: allPms } = useQuery<PmMessage[]>({
+    queryKey: ["/api/private-messages"],
+    enabled: !!user && !isAdmin,
+    refetchInterval: 15000,
+  });
+  const unreadFromAdmin = allPms?.filter(m => m.isFromAdmin).length ?? 0;
+
+  // For admins: count unread PM threads
+  const { data: adminThreads } = useQuery<PmThread[]>({
+    queryKey: ["/api/admin/private-messages"],
+    enabled: !!user && isAdmin,
+    refetchInterval: 10000,
+  });
+  const adminUnread = adminThreads?.reduce((s, t) => s + t.unread, 0) ?? 0;
 
   const sendMutation = useMutation({
     mutationFn: (content: string) => apiRequest("POST", "/api/private-messages", { content }),
@@ -96,17 +114,21 @@ export default function Header({ showBack, title }: HeaderProps) {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {!isAdmin && (
               <>
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="relative"
                   data-testid="button-open-pm"
                   onClick={() => setPmOpen(true)}
                   title="私信管理员"
                 >
                   <Mail className="w-5 h-5" />
+                  {unreadFromAdmin > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
+                  )}
                 </Button>
                 <Button
                   variant="ghost"
@@ -118,6 +140,24 @@ export default function Header({ showBack, title }: HeaderProps) {
                   <UserCircle className="w-5 h-5" />
                 </Button>
               </>
+            )}
+            {isAdmin && (
+              <Link href="/admin">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  data-testid="button-admin-shortcut"
+                  title="管理后台"
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                  {adminUnread > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold px-0.5">
+                      {adminUnread > 9 ? "9+" : adminUnread}
+                    </span>
+                  )}
+                </Button>
+              </Link>
             )}
             <div
               className="flex items-center gap-1.5 bg-card border border-card-border rounded-md px-3 py-1.5"

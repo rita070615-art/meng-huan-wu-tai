@@ -15,7 +15,26 @@ declare module "express-session" {
     role: string;
     verifiedRooms: string[];
     totpVerified: boolean;
+    contactAdminCount: number;
   }
+}
+
+// In-memory rate limiter: userId → last N message timestamps
+const userMsgTimestamps = new Map<string, number[]>();
+function checkSpam(userId: string, content: string): string | null {
+  // Content checks
+  if (content.length > 300) return "消息过长，请限制在300字以内";
+  if (/https?:\/\/|www\./i.test(content)) return "不允许发送链接";
+  if (/(.)\1{5,}/.test(content)) return "请勿发送大量重复字符";
+  const banned = ["微信", "QQ群", "加群", "代理", "兼职", "广告", "优惠", "刷单"];
+  if (banned.some(k => content.includes(k))) return "消息含有违禁内容，请勿发送广告";
+  // Rate limit: max 4 messages per 8 seconds
+  const now = Date.now();
+  const timestamps = (userMsgTimestamps.get(userId) || []).filter(t => now - t < 8000);
+  if (timestamps.length >= 4) return "发送太快，请稍后再试";
+  timestamps.push(now);
+  userMsgTimestamps.set(userId, timestamps);
+  return null;
 }
 
 type WsClient = {
@@ -392,6 +411,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "积分不足，余额需至少 1 分才能发言" });
     }
 
+    if (sender.role !== "admin") {
+      const room = await storage.getRoom(req.params.id);
+      if (room?.chatMuted) return res.status(403).json({ error: "当前聊天室已被管理员禁言" });
+      const spamErr = checkSpam(sender.id, parsed.data.content);
+      if (spamErr) return res.status(429).json({ error: spamErr });
+    }
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
       userId: req.session.userId,
@@ -422,6 +448,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.clearMessages(req.params.id);
     broadcast(req.params.id, { type: "MESSAGES_CLEARED" });
     res.json({ ok: true });
+  });
+
+  app.patch("/api/admin/rooms/:id/chat-mute", requireAdmin, async (req, res) => {
+    const schema = z.object({ chatMuted: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+    const room = await storage.updateRoom(req.params.id, { chatMuted: parsed.data.chatMuted });
+    if (!room) return res.status(404).json({ error: "房间不存在" });
+    broadcast(req.params.id, { type: "ROOM_CHAT_MUTED", chatMuted: parsed.data.chatMuted });
+    res.json({ id: room.id, chatMuted: room.chatMuted });
+  });
+
+  // Contact admin (public — for unauthenticated or banned users)
+  app.post("/api/contact-admin", async (req, res) => {
+    const schema = z.object({ content: z.string().min(1).max(500), nickname: z.string().max(20).optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "消息内容无效" });
+
+    const count = req.session.contactAdminCount || 0;
+    if (count >= 3) return res.status(429).json({ error: "您已发送3条消息，请等待管理员回复" });
+
+    let visitorId = "00000000-0000-0000-0000-000000000000";
+    let visitorUsername = "访客";
+    let visitorNickname: string | null = parsed.data.nickname || null;
+
+    if (req.session.userId) {
+      const user = await storage.getUser(req.session.userId);
+      if (user) {
+        visitorId = user.id;
+        visitorUsername = user.username;
+        visitorNickname = user.nickname ?? null;
+      }
+    }
+
+    await storage.createPrivateMessage({
+      userId: visitorId,
+      userUsername: visitorUsername,
+      userNickname: visitorNickname ?? `访客${count + 1}`,
+      content: parsed.data.content,
+      isFromAdmin: false,
+    });
+    broadcastToAdmins({ type: "NEW_PRIVATE_MESSAGE" });
+
+    req.session.contactAdminCount = count + 1;
+    req.session.save(() => res.json({ ok: true, remaining: 2 - count }));
   });
 
   // BET ROUNDS

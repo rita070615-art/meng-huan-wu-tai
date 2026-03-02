@@ -7,7 +7,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, CheckCircle2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Shield, CheckCircle2, MessageCircle, Send, X } from "lucide-react";
 import logoImg from "@assets/logo_v2.png";
 
 type View = "login" | "register" | "forgot";
@@ -27,6 +28,9 @@ export default function AuthPage() {
   const [resetNewPw, setResetNewPw] = useState("");
   const [resetConfirmPw, setResetConfirmPw] = useState("");
   const [resetDone, setResetDone] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactMsg, setContactMsg] = useState("");
+  const [contactSentCount, setContactSentCount] = useState(0);
 
   const authMutation = useMutation({
     mutationFn: (data: { username: string; password: string; nickname?: string }) =>
@@ -49,6 +53,18 @@ export default function AuthPage() {
     onError: (e: Error) => {
       toast({ title: "重置失败", description: e.message, variant: "destructive" });
       setResetTotpCode("");
+    },
+  });
+
+  const contactMutation = useMutation({
+    mutationFn: (content: string) => apiRequest("POST", "/api/contact-admin", { content }),
+    onSuccess: () => {
+      setContactMsg("");
+      setContactSentCount(c => c + 1);
+      toast({ title: "已发送", description: "管理员将尽快回复您" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "发送失败", description: e.message, variant: "destructive" });
     },
   });
 
@@ -308,6 +324,68 @@ export default function AuthPage() {
                 </Button>
               </form>
             </>
+          )}
+        </div>
+
+        {/* Contact Admin */}
+        <div className="mt-4">
+          {!contactOpen ? (
+            <button
+              type="button"
+              data-testid="button-contact-admin"
+              onClick={() => setContactOpen(true)}
+              className="w-full flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors py-2"
+            >
+              <MessageCircle className="w-4 h-4" />
+              联系管理员
+            </button>
+          ) : (
+            <div className="bg-card border border-card-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">联系管理员</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setContactOpen(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid="button-close-contact"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {contactSentCount >= 3 ? (
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  今日消息已达上限（3条），请稍后再试
+                </p>
+              ) : (
+                <>
+                  <Textarea
+                    data-testid="input-contact-message"
+                    value={contactMsg}
+                    onChange={(e) => setContactMsg(e.target.value)}
+                    placeholder="请描述您的问题..."
+                    className="resize-none text-sm min-h-[80px]"
+                    maxLength={500}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      剩余 {3 - contactSentCount} 次机会
+                    </span>
+                    <Button
+                      size="sm"
+                      data-testid="button-send-contact"
+                      disabled={!contactMsg.trim() || contactMutation.isPending}
+                      onClick={() => contactMutation.mutate(contactMsg.trim())}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1.5" />
+                      {contactMutation.isPending ? "发送中..." : "发送"}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>

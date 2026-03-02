@@ -35,6 +35,7 @@ export const rooms = pgTable("rooms", {
   isActive: boolean("is_active").notNull().default(true),
   gameUrl: text("game_url").default(""),
   password: text("password").default(""),
+  chatMuted: boolean("chat_muted").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

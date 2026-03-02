@@ -28,7 +28,7 @@ export interface IStorage {
   createRoom(data: { name: string; description: string; createdBy: string }): Promise<Room>;
   getRooms(): Promise<Room[]>;
   getRoom(id: string): Promise<Room | undefined>;
-  updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive" | "gameUrl" | "password">>): Promise<Room | undefined>;
+  updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive" | "gameUrl" | "password" | "chatMuted">>): Promise<Room | undefined>;
   deleteRoom(id: string): Promise<void>;
 
   // Bet Rounds
