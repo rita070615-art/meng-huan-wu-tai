@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import logoImg from "@assets/logo_menghuanwutai.png";
+import logoImg from "@assets/logo_v2.png";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -41,9 +41,9 @@ export default function AuthPage() {
 
       <div className="relative w-full max-w-sm mx-4">
         <div className="text-center mb-8">
-          <div className="inline-flex flex-col items-center gap-2 mb-4">
-            <img src={logoImg} alt="梦幻舞台" className="w-32 h-32 object-contain" />
-            <span className="text-2xl font-bold tracking-tight">梦幻舞台</span>
+          <div className="inline-flex flex-col items-center gap-0 mb-2">
+            <img src={logoImg} alt="梦幻舞台" className="w-40 h-40 object-contain" style={{ filter: "drop-shadow(0 0 20px rgba(139,92,246,0.4))" }} />
+            <span className="text-2xl font-bold tracking-tight -mt-2">梦幻舞台</span>
           </div>
           <p className="text-muted-foreground text-sm">
             {isLogin ? "登录您的账户，开始游戏" : "创建账户，加入游戏大厅"}

@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Coins, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import logoImg from "@assets/logo_menghuanwutai.png";
+import logoImg from "@assets/logo_v2.png";
 
 type HeaderProps = {
   showBack?: boolean;
@@ -34,7 +34,7 @@ export default function Header({ showBack, title }: HeaderProps) {
             className="flex items-center gap-1.5 shrink-0"
             data-testid="link-home"
           >
-            <img src={logoImg} alt="梦幻舞台" className="w-9 h-9 object-contain rounded-md" />
+            <img src={logoImg} alt="梦幻舞台" className="w-10 h-10 object-contain" />
             <span className="font-bold text-base hidden sm:block">梦幻舞台</span>
           </button>
           {title && (
