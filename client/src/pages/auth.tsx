@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import logoImg from "@assets/image_1772474654665.png";
+import logoImg from "@assets/logo_menghuanwutai.png";
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);

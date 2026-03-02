@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Coins, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import logoImg from "@assets/image_1772474654665.png";
+import logoImg from "@assets/logo_menghuanwutai.png";
 
 type HeaderProps = {
   showBack?: boolean;
