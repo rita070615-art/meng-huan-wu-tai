@@ -25,7 +25,7 @@ export interface IStorage {
   createRoom(data: { name: string; description: string; createdBy: string }): Promise<Room>;
   getRooms(): Promise<Room[]>;
   getRoom(id: string): Promise<Room | undefined>;
-  updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive">>): Promise<Room | undefined>;
+  updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive" | "gameUrl">>): Promise<Room | undefined>;
   deleteRoom(id: string): Promise<void>;
 
   // Bet Rounds
@@ -119,7 +119,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive">>): Promise<Room | undefined> {
+  async updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive" | "gameUrl">>): Promise<Room | undefined> {
     const result = await db.update(rooms).set(data).where(eq(rooms.id, id)).returning();
     return result[0];
   }

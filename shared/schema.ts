@@ -29,6 +29,7 @@ export const rooms = pgTable("rooms", {
   description: text("description").notNull().default(""),
   createdBy: varchar("created_by", { length: 36 }).notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  gameUrl: text("game_url").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

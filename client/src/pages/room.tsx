@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2 } from "lucide-react";
+import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2, Gamepad2, Maximize2 } from "lucide-react";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
 type BetRoundWithBets = BetRound & { bets: Bet[]; options: BetOption[] };
@@ -21,7 +21,8 @@ export default function RoomPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const [mobileTab, setMobileTab] = useState<"chat" | "bet">("chat");
+  const [mobileTab, setMobileTab] = useState<"game" | "chat" | "bet">("chat");
+  const [gameExpanded, setGameExpanded] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [betAmount, setBetAmount] = useState("100");
   const [selectedOption, setSelectedOption] = useState<string>("");
@@ -165,12 +166,39 @@ export default function RoomPage() {
     return acc;
   }, {} as Record<string, number>);
 
+  const hasGame = !!(room?.gameUrl);
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className={`flex-1 flex flex-col min-w-0 border-r border-border ${mobileTab === "bet" ? "hidden md:flex" : "flex"}`}>
+      {/* Desktop game panel — shown when gameUrl is set */}
+      {hasGame && (
+        <div className={`hidden md:flex flex-col border-b border-border bg-black/50 transition-all duration-300 ${gameExpanded ? "flex-1" : "h-[380px]"}`}>
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
+            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Gamepad2 className="w-3.5 h-3.5 text-primary" />
+              AG Gaming · 百家乐
+            </span>
+            <button
+              onClick={() => setGameExpanded(!gameExpanded)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={gameExpanded ? "收起游戏" : "展开游戏"}
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          </div>
+          <iframe
+            src={room?.gameUrl || ""}
+            className="w-full flex-1 border-0"
+            allow="fullscreen"
+            title="AG Gaming 百家乐"
+          />
+        </div>
+      )}
+
+      <div className={`flex overflow-hidden ${hasGame ? "" : "flex-1"} ${gameExpanded ? "hidden md:hidden" : "flex-1"}`}>
+        <div className={`flex-1 flex flex-col min-w-0 border-r border-border ${mobileTab === "bet" || mobileTab === "game" ? "hidden md:flex" : "flex"}`}>
           <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-messages">
             {msgsLoading ? (
               <div className="space-y-3">
@@ -217,7 +245,7 @@ export default function RoomPage() {
           </form>
         </div>
 
-        <div className={`md:w-80 flex-shrink-0 flex-col overflow-hidden bg-card/30 ${mobileTab === "chat" ? "hidden md:flex" : "flex flex-1 md:flex-none"}`}>
+        <div className={`md:w-80 flex-shrink-0 flex-col overflow-hidden bg-card/30 ${mobileTab === "bet" ? "flex flex-1 md:flex-none" : "hidden md:flex"}`}>
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center">
@@ -371,9 +399,33 @@ export default function RoomPage() {
             </div>
           </div>
         </div>
+
+        {/* Mobile game panel */}
+        {hasGame && (
+          <div className={`flex-1 flex-col bg-black md:hidden ${mobileTab === "game" ? "flex" : "hidden"}`}>
+            <iframe
+              src={room?.gameUrl || ""}
+              className="w-full flex-1 border-0"
+              allow="fullscreen"
+              title="AG Gaming 百家乐"
+            />
+          </div>
+        )}
       </div>
 
       <div className="md:hidden flex border-t border-border bg-background shrink-0">
+        {hasGame && (
+          <button
+            data-testid="mobile-tab-game"
+            onClick={() => setMobileTab("game")}
+            className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs font-medium transition-colors ${
+              mobileTab === "game" ? "text-primary" : "text-muted-foreground"
+            }`}
+          >
+            <Gamepad2 className="w-5 h-5" />
+            游戏
+          </button>
+        )}
         <button
           data-testid="mobile-tab-chat"
           onClick={() => setMobileTab("chat")}

@@ -173,6 +173,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  app.patch("/api/admin/rooms/:id/game-url", requireAdmin, async (req, res) => {
+    const schema = z.object({ gameUrl: z.string().max(2000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid URL" });
+    const room = await storage.updateRoom(req.params.id, { gameUrl: parsed.data.gameUrl });
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    broadcastAll({ type: "ROOM_UPDATED", room });
+    res.json(room);
+  });
+
   // MESSAGES
   app.get("/api/rooms/:id/messages", requireAuth, async (req, res) => {
     const msgs = await storage.getMessages(req.params.id, 100);

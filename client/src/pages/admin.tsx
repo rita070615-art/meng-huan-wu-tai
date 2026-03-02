@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Link, Gamepad2
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -195,7 +195,8 @@ function RoomsAdmin() {
                   </div>
                 </div>
                 {selectedRoom === room.id && (
-                  <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4">
+                  <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4 space-y-3">
+                    <GameUrlManager room={room} />
                     <BetRoundManager roomId={room.id} />
                   </div>
                 )}
@@ -208,6 +209,95 @@ function RoomsAdmin() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function GameUrlManager({ room }: { room: RoomWithBet }) {
+  const { toast } = useToast();
+  const [url, setUrl] = useState(room.gameUrl || "");
+  const [editing, setEditing] = useState(false);
+
+  const saveUrlMutation = useMutation({
+    mutationFn: (gameUrl: string) =>
+      apiRequest("PATCH", `/api/admin/rooms/${room.id}/game-url`, { gameUrl }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${room.id}`] });
+      setEditing(false);
+      toast({ title: "游戏链接已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Gamepad2 className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">AG Gaming 游戏链接</h3>
+        {room.gameUrl && (
+          <span className="text-xs text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+            已配置
+          </span>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Input
+            data-testid={`input-game-url-${room.id}`}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="输入 AG Gaming 游戏 iframe 地址..."
+            className="bg-background text-sm"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              data-testid={`button-save-game-url-${room.id}`}
+              onClick={() => saveUrlMutation.mutate(url)}
+              disabled={saveUrlMutation.isPending}
+            >
+              <Check className="w-3.5 h-3.5 mr-1" />
+              保存
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setUrl(room.gameUrl || ""); setEditing(false); }}>
+              取消
+            </Button>
+            {url && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="hover:border-destructive hover:text-destructive ml-auto"
+                onClick={() => { setUrl(""); saveUrlMutation.mutate(""); }}
+                disabled={saveUrlMutation.isPending}
+              >
+                <X className="w-3.5 h-3.5 mr-1" />
+                移除
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="flex items-center gap-2 cursor-pointer group"
+          onClick={() => setEditing(true)}
+        >
+          {room.gameUrl ? (
+            <div className="flex items-center gap-2 flex-1 min-w-0 bg-muted/40 rounded-md px-3 py-2">
+              <Link className="w-3.5 h-3.5 text-primary shrink-0" />
+              <span className="text-xs text-muted-foreground truncate flex-1">{room.gameUrl}</span>
+              <Edit2 className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-muted-foreground text-xs border border-dashed border-border rounded-md px-3 py-1.5 group-hover:border-primary/50 group-hover:text-primary transition-colors w-full">
+              <Link className="w-3 h-3" />
+              点击配置 AG Gaming 游戏链接...
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
