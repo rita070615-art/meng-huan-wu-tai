@@ -32,6 +32,7 @@ export default function RoomPage() {
   const [chatMuted, setChatMuted] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [pendingWinner, setPendingWinner] = useState<string | null>(null);
+  const [pendingBet, setPendingBet] = useState<{ option: string; amount: number } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -200,7 +201,12 @@ export default function RoomPage() {
     if (!selectedOption) return toast({ title: "请选择菜单选项", variant: "destructive" });
     const amt = parseInt(betAmount);
     if (!amt || amt < 1) return toast({ title: "请输入有效金额", variant: "destructive" });
-    betMutation.mutate({ option: selectedOption, amount: amt });
+    setPendingBet({ option: selectedOption, amount: amt });
+  };
+
+  const confirmBet = () => {
+    if (!pendingBet) return;
+    betMutation.mutate(pendingBet, { onSettled: () => setPendingBet(null) });
   };
 
   const currentRound = liveRound !== undefined ? liveRound : betRoundData;
@@ -448,29 +454,66 @@ export default function RoomPage() {
                 })}
               </div>
 
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Coins className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <Input
-                    data-testid="input-bet-amount"
-                    type="number"
-                    min={1}
-                    value={betAmount}
-                    onChange={(e) => setBetAmount(e.target.value)}
-                    disabled={userAlreadyBet}
-                    className="pl-8 bg-background border-border text-sm h-9"
-                  />
+              {pendingBet ? (
+                <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-3 space-y-2">
+                  <p className="text-sm font-medium text-center">确认您的点餐？</p>
+                  <div className="flex items-center justify-center gap-3 text-sm">
+                    <span className="font-bold" style={{ color: options.find(o => o.key === pendingBet.option)?.color }}>
+                      {options.find(o => o.key === pendingBet.option)?.label}
+                    </span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="flex items-center gap-1">
+                      <Coins className="w-3.5 h-3.5 text-yellow-500" />
+                      <span className="font-semibold">{pendingBet.amount.toLocaleString()} 分</span>
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
+                      data-testid="button-cancel-bet"
+                      onClick={() => setPendingBet(null)}
+                      disabled={betMutation.isPending}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
+                      data-testid="button-confirm-bet"
+                      onClick={confirmBet}
+                      disabled={betMutation.isPending}
+                    >
+                      {betMutation.isPending ? "提交中..." : "✓ 确认点餐"}
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  data-testid="button-place-bet"
-                  onClick={handleBet}
-                  disabled={betMutation.isPending || userAlreadyBet || !selectedOption}
-                  size="sm"
-                  className="h-9 px-4 shrink-0"
-                >
-                  {betMutation.isPending ? "..." : userAlreadyBet ? "已点餐" : "点餐"}
-                </Button>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Coins className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      data-testid="input-bet-amount"
+                      type="number"
+                      min={1}
+                      value={betAmount}
+                      onChange={(e) => setBetAmount(e.target.value)}
+                      disabled={userAlreadyBet}
+                      className="pl-8 bg-background border-border text-sm h-9"
+                    />
+                  </div>
+                  <Button
+                    data-testid="button-place-bet"
+                    onClick={handleBet}
+                    disabled={betMutation.isPending || userAlreadyBet || !selectedOption}
+                    size="sm"
+                    className="h-9 px-4 shrink-0"
+                  >
+                    {userAlreadyBet ? "已点餐" : "点餐"}
+                  </Button>
+                </div>
+              )}
 
               {totalPool > 0 && (
                 <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
@@ -482,19 +525,21 @@ export default function RoomPage() {
                 </div>
               )}
 
-              <div className="flex gap-1 flex-wrap">
-                {[50, 100, 500, 1000].map((v) => (
-                  <button
-                    key={v}
-                    data-testid={`button-quick-bet-${v}`}
-                    onClick={() => setBetAmount(String(v))}
-                    disabled={userAlreadyBet}
-                    className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground disabled:opacity-40 transition-opacity"
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              {!pendingBet && (
+                <div className="flex gap-1 flex-wrap">
+                  {[50, 100, 500, 1000].map((v) => (
+                    <button
+                      key={v}
+                      data-testid={`button-quick-bet-${v}`}
+                      onClick={() => setBetAmount(String(v))}
+                      disabled={userAlreadyBet}
+                      className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground disabled:opacity-40 transition-opacity"
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-6 flex flex-col items-center justify-center text-center border-b border-border">
