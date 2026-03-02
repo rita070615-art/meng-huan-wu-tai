@@ -1099,6 +1099,7 @@ function AdminInbox() {
 
   const { data: conversation, isLoading: convLoading } = useQuery<PmMessage[]>({
     queryKey: ["/api/admin/private-messages", selectedUserId],
+    queryFn: () => apiRequest("GET", `/api/admin/private-messages/${selectedUserId}`),
     enabled: !!selectedUserId,
     refetchInterval: 3000,
   });
