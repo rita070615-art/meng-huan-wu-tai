@@ -3,8 +3,8 @@ import { Pool } from "pg";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
-  users, rooms, betRounds, bets, messages,
-  type User, type InsertUser, type Room, type BetRound, type Bet, type Message,
+  users, rooms, betRounds, bets, messages, botSettings,
+  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings,
 } from "@shared/schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -45,6 +45,12 @@ export interface IStorage {
   createMessage(data: { roomId: string; userId?: string; username?: string; content: string; type?: string }): Promise<Message>;
   getMessages(roomId: string, limit?: number): Promise<Message[]>;
   deleteMessage(id: string): Promise<void>;
+
+  // Bot Settings
+  getBotSettings(): Promise<BotSettings>;
+  updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number }): Promise<BotSettings>;
+  getShillUsers(): Promise<User[]>;
+  setUserShill(id: string, isShill: boolean): Promise<User | undefined>;
 }
 
 export class DbStorage implements IStorage {
@@ -198,6 +204,37 @@ export class DbStorage implements IStorage {
 
   async deleteMessage(id: string): Promise<void> {
     await db.delete(messages).where(eq(messages.id, id));
+  }
+
+  async getBotSettings(): Promise<BotSettings> {
+    const rows = await db.select().from(botSettings).limit(1);
+    if (rows.length > 0) return rows[0];
+    const inserted = await db.insert(botSettings).values({
+      id: "default",
+      enabled: false,
+      minAmount: 100,
+      maxAmount: 500,
+    }).returning();
+    return inserted[0];
+  }
+
+  async updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number }): Promise<BotSettings> {
+    const existing = await db.select().from(botSettings).limit(1);
+    if (existing.length === 0) {
+      const inserted = await db.insert(botSettings).values({ id: "default", ...data }).returning();
+      return inserted[0];
+    }
+    const updated = await db.update(botSettings).set({ ...data, updatedAt: new Date() }).where(eq(botSettings.id, existing[0].id)).returning();
+    return updated[0];
+  }
+
+  async getShillUsers(): Promise<User[]> {
+    return db.select().from(users).where(eq(users.isShill, true));
+  }
+
+  async setUserShill(id: string, isShill: boolean): Promise<User | undefined> {
+    const result = await db.update(users).set({ isShill }).where(eq(users.id, id)).returning();
+    return result[0];
   }
 }
 

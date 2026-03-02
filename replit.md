@@ -30,6 +30,10 @@ Dream Stage is a Chinese-language web application where administrators can creat
 - Customize bet option labels (A, B, C can be renamed to anything)
 - Declare winners (90% of pool distributed proportionally to winners)
 - Manage user balances
+- Ban/unban users
+- Add notes/remarks per user
+- Delete chat messages
+- **托管自动下注系统**: Designate accounts as "shills" (托) that auto-bet when a round starts; configure global random bet amount range; insufficient balance triggers a system @mention warning
 
 ## Default Credentials
 
@@ -70,6 +74,12 @@ GET  /api/rooms/:id/bets
 
 GET  /api/admin/users (admin)
 PATCH /api/admin/users/:id/balance (admin)
+PATCH /api/admin/users/:id/notes (admin)
+PATCH /api/admin/users/:id/ban (admin)
+PATCH /api/admin/users/:id/shill (admin)
+
+GET  /api/admin/bot-settings (admin)
+PATCH /api/admin/bot-settings (admin)
 ```
 
 ## WebSocket

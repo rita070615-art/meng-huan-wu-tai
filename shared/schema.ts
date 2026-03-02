@@ -10,8 +10,17 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"),
   notes: text("notes").default(""),
   banned: boolean("banned").notNull().default(false),
+  isShill: boolean("is_shill").notNull().default(false),
   registrationIp: text("registration_ip").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const botSettings = pgTable("bot_settings", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  enabled: boolean("enabled").notNull().default(false),
+  minAmount: integer("min_amount").notNull().default(100),
+  maxAmount: integer("max_amount").notNull().default(500),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const rooms = pgTable("rooms", {
@@ -79,6 +88,7 @@ export type Room = typeof rooms.$inferSelect;
 export type BetRound = typeof betRounds.$inferSelect;
 export type Bet = typeof bets.$inferSelect;
 export type Message = typeof messages.$inferSelect;
+export type BotSettings = typeof botSettings.$inferSelect;
 
 export type BetOption = {
   key: string;

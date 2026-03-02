@@ -235,6 +235,39 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       type: "system",
     });
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
+
+    // Auto-bet: trigger shill accounts if bot is enabled
+    try {
+      const botCfg = await storage.getBotSettings();
+      if (botCfg.enabled) {
+        const shills = await storage.getShillUsers();
+        for (const shill of shills) {
+          const amount = Math.floor(Math.random() * (botCfg.maxAmount - botCfg.minAmount + 1)) + botCfg.minAmount;
+          if (shill.balance < amount) {
+            const warnMsg = await storage.createMessage({
+              roomId: req.params.id,
+              content: `⚠️ @${shill.username} 积分不足（${shill.balance}），此条无效`,
+              type: "system",
+            });
+            broadcast(req.params.id, { type: "MESSAGE", message: warnMsg });
+            continue;
+          }
+          const randomOption = (options as Array<{ key: string }>)[Math.floor(Math.random() * options.length)].key;
+          const bet = await storage.placeBet({
+            roundId: round.id,
+            roomId: req.params.id,
+            userId: shill.id,
+            username: shill.username,
+            option: randomOption,
+            amount,
+          });
+          broadcast(req.params.id, { type: "NEW_BET", bet });
+        }
+      }
+    } catch (e) {
+      console.error("Auto-bet error:", e);
+    }
+
     res.json(round);
   });
 
@@ -356,6 +389,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const user = await storage.banUser(req.params.id, parsed.data.banned);
     res.json({ id: user!.id, username: user!.username, banned: user!.banned });
+  });
+
+  app.patch("/api/admin/users/:id/shill", requireAdmin, async (req, res) => {
+    const schema = z.object({ isShill: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (target.role === "admin") return res.status(400).json({ error: "不能将管理员设为托" });
+
+    const user = await storage.setUserShill(req.params.id, parsed.data.isShill);
+    res.json({ id: user!.id, username: user!.username, isShill: user!.isShill });
+  });
+
+  // BOT SETTINGS
+  app.get("/api/admin/bot-settings", requireAdmin, async (req, res) => {
+    const settings = await storage.getBotSettings();
+    res.json(settings);
+  });
+
+  app.patch("/api/admin/bot-settings", requireAdmin, async (req, res) => {
+    const schema = z.object({
+      enabled: z.boolean(),
+      minAmount: z.number().int().min(1),
+      maxAmount: z.number().int().min(1),
+    }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+    const settings = await storage.updateBotSettings(parsed.data);
+    res.json(settings);
   });
 
   // WEBSOCKET

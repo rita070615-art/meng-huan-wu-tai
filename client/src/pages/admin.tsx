@@ -12,11 +12,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight
 } from "lucide-react";
-import type { Room, BetRound, BetOption } from "@shared/schema";
+import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; balance: number; role: string; notes: string; banned: boolean };
+type AdminUser = { id: string; username: string; balance: number; role: string; notes: string; banned: boolean; isShill: boolean };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -44,6 +44,10 @@ export default function AdminPage() {
               <Users className="w-4 h-4 mr-1.5" />
               用户管理
             </TabsTrigger>
+            <TabsTrigger value="bot" data-testid="tab-bot" className="flex-1 sm:flex-none">
+              <Bot className="w-4 h-4 mr-1.5" />
+              托管设置
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="rooms">
@@ -51,6 +55,9 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="users">
             <UsersAdmin />
+          </TabsContent>
+          <TabsContent value="bot">
+            <BotAdmin />
           </TabsContent>
         </Tabs>
       </main>
@@ -470,6 +477,17 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
+  const shillMutation = useMutation({
+    mutationFn: ({ id, isShill }: { id: string; isShill: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/shill`, { isShill }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bot-settings"] });
+      toast({ title: vars.isShill ? "已设为托" : "已取消托身份" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div>
       <h2 className="font-semibold mb-3 flex items-center gap-2">
@@ -496,6 +514,12 @@ function UsersAdmin() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-medium truncate">{u.username}</p>
+                    {u.isShill && (
+                      <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Bot className="w-3 h-3" />
+                        托
+                      </span>
+                    )}
                     {u.banned && (
                       <span className="text-xs font-medium text-destructive bg-destructive/10 px-1.5 py-0.5 rounded">
                         已封禁
@@ -553,6 +577,19 @@ function UsersAdmin() {
                     >
                       <Coins className="w-3.5 h-3.5" />
                     </Button>
+                    {u.role !== "admin" && (
+                      <Button
+                        size="sm"
+                        variant={u.isShill ? "secondary" : "outline"}
+                        data-testid={`button-shill-${u.id}`}
+                        onClick={() => shillMutation.mutate({ id: u.id, isShill: !u.isShill })}
+                        disabled={shillMutation.isPending}
+                        title={u.isShill ? "取消托身份" : "设为托"}
+                        className={u.isShill ? "border-purple-500/50 text-purple-400" : "hover:border-purple-500/50 hover:text-purple-400"}
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                     {u.role !== "admin" && (
                       <Button
                         size="sm"
@@ -632,6 +669,200 @@ function UsersAdmin() {
           暂无用户
         </div>
       )}
+    </div>
+  );
+}
+
+function BotAdmin() {
+  const { toast } = useToast();
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+
+  const { data: settings, isLoading: settingsLoading } = useQuery<BotSettings>({
+    queryKey: ["/api/admin/bot-settings"],
+  });
+
+  const { data: users, isLoading: usersLoading } = useQuery<AdminUser[]>({
+    queryKey: ["/api/admin/users"],
+  });
+
+  const shills = users?.filter((u) => u.isShill) ?? [];
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (data: { enabled: boolean; minAmount: number; maxAmount: number }) =>
+      apiRequest("PATCH", "/api/admin/bot-settings", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bot-settings"] });
+      toast({ title: "托管设置已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
+  });
+
+  const shillMutation = useMutation({
+    mutationFn: ({ id, isShill }: { id: string; isShill: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/shill`, { isShill }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: vars.isShill ? "已设为托" : "已取消托身份" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const handleToggleEnabled = () => {
+    if (!settings) return;
+    updateSettingsMutation.mutate({
+      enabled: !settings.enabled,
+      minAmount: settings.minAmount,
+      maxAmount: settings.maxAmount,
+    });
+  };
+
+  const handleSaveRange = () => {
+    if (!settings) return;
+    const min = parseInt(minAmount || String(settings.minAmount));
+    const max = parseInt(maxAmount || String(settings.maxAmount));
+    if (isNaN(min) || isNaN(max) || min < 1 || max < 1) {
+      toast({ title: "请输入有效金额", variant: "destructive" });
+      return;
+    }
+    if (max < min) {
+      toast({ title: "最大值不能小于最小值", variant: "destructive" });
+      return;
+    }
+    updateSettingsMutation.mutate({ enabled: settings.enabled, minAmount: min, maxAmount: max });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-card border border-card-border rounded-lg p-5">
+        <h2 className="font-semibold mb-4 flex items-center gap-2">
+          <Bot className="w-4 h-4 text-purple-400" />
+          自动托管设置
+        </h2>
+
+        {settingsLoading ? (
+          <Skeleton className="h-32 rounded-lg" />
+        ) : settings ? (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+              <div>
+                <p className="font-medium text-sm">托管自动下注</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  开启后，投注轮开始时托账号将自动随机下注
+                </p>
+              </div>
+              <button
+                data-testid="button-toggle-bot"
+                onClick={handleToggleEnabled}
+                disabled={updateSettingsMutation.isPending}
+                className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              >
+                {settings.enabled ? (
+                  <ToggleRight className="w-9 h-9 text-purple-400" />
+                ) : (
+                  <ToggleLeft className="w-9 h-9 text-muted-foreground" />
+                )}
+                <span className={settings.enabled ? "text-purple-400" : "text-muted-foreground"}>
+                  {settings.enabled ? "已开启" : "已关闭"}
+                </span>
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium">随机下注区间（积分）</p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">最小值</Label>
+                  <Input
+                    data-testid="input-bot-min"
+                    type="number"
+                    min={1}
+                    placeholder={String(settings.minAmount)}
+                    value={minAmount}
+                    onChange={(e) => setMinAmount(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <span className="text-muted-foreground mt-5">—</span>
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">最大值</Label>
+                  <Input
+                    data-testid="input-bot-max"
+                    type="number"
+                    min={1}
+                    placeholder={String(settings.maxAmount)}
+                    value={maxAmount}
+                    onChange={(e) => setMaxAmount(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  data-testid="button-save-bot-range"
+                  onClick={handleSaveRange}
+                  disabled={updateSettingsMutation.isPending}
+                  className="mt-5 shrink-0"
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                  保存
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                当前区间：{settings.minAmount.toLocaleString()} ~ {settings.maxAmount.toLocaleString()} 积分，每次随机选取
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="bg-card border border-card-border rounded-lg p-5">
+        <h2 className="font-semibold mb-4 flex items-center gap-2">
+          <Users className="w-4 h-4" />
+          托账号列表
+          {shills.length > 0 && (
+            <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded ml-1">
+              {shills.length} 个
+            </span>
+          )}
+        </h2>
+        {usersLoading ? (
+          <Skeleton className="h-20 rounded-lg" />
+        ) : shills.length > 0 ? (
+          <div className="space-y-2">
+            {shills.map((u) => (
+              <div key={u.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+                <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-sm font-bold text-purple-400 shrink-0">
+                  {u.username[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{u.username}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Coins className="w-3 h-3 text-yellow-500" />
+                    {u.balance.toLocaleString()} 积分
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid={`button-remove-shill-${u.id}`}
+                  onClick={() => shillMutation.mutate({ id: u.id, isShill: false })}
+                  disabled={shillMutation.isPending}
+                  className="shrink-0 hover:border-destructive hover:text-destructive"
+                  title="取消托身份"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-muted-foreground text-sm py-6 border border-dashed border-border rounded-lg">
+            <Bot className="w-8 h-8 mx-auto mb-2 opacity-30" />
+            暂无托账号<br />
+            <span className="text-xs">在「用户管理」中点击 <Bot className="w-3 h-3 inline" /> 图标可将用户设为托</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
