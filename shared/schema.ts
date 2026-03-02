@@ -6,7 +6,7 @@ export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  balance: integer("balance").notNull().default(1000),
+  balance: integer("balance").notNull().default(0),
   role: text("role").notNull().default("user"),
   notes: text("notes").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),

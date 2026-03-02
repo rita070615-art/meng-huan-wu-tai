@@ -62,7 +62,7 @@ export class DbStorage implements IStorage {
       username: user.username,
       password: user.password,
       role: user.role || "user",
-      balance: user.balance ?? 1000,
+      balance: user.balance ?? 0,
     }).returning();
     return result[0];
   }
