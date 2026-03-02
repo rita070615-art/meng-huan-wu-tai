@@ -428,7 +428,7 @@ export default function RoomPage() {
             <div className="p-4 border-b border-border space-y-3">
               <div
                 className="grid gap-2"
-                style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 3)}, 1fr)` }}
+                style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
               >
                 {options.map((opt, i) => {
                   const total = optionTotals[opt.key] || 0;

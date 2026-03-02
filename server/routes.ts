@@ -509,9 +509,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (existing) return res.status(400).json({ error: "已有进行中的投注轮" });
 
     const defaultOptions = [
-      { key: "A", label: "A", color: "#f97316" },
-      { key: "B", label: "B", color: "#6366f1" },
-      { key: "C", label: "C", color: "#10b981" },
+      { key: "A", label: "力量", color: "#ef4444" },
+      { key: "B", label: "体力", color: "#06b6d4" },
+      { key: "C", label: "法力", color: "#a855f7" },
+      { key: "D", label: "耐力", color: "#3b82f6" },
     ];
 
     const options = req.body.options || defaultOptions;

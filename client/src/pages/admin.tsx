@@ -374,9 +374,10 @@ function RoomPasswordManager({ room }: { room: RoomWithBet }) {
 function BetRoundManager({ roomId }: { roomId: string }) {
   const { toast } = useToast();
   const [options, setOptions] = useState<BetOption[]>([
-    { key: "A", label: "A", color: "#f97316" },
-    { key: "B", label: "B", color: "#6366f1" },
-    { key: "C", label: "C", color: "#10b981" },
+    { key: "A", label: "力量", color: "#ef4444" },
+    { key: "B", label: "体力", color: "#06b6d4" },
+    { key: "C", label: "法力", color: "#a855f7" },
+    { key: "D", label: "耐力", color: "#3b82f6" },
   ]);
   const [editingOptions, setEditingOptions] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -413,7 +414,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
   });
 
-  const COLORS = ["#f97316", "#6366f1", "#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"];
+  const COLORS = ["#ef4444", "#06b6d4", "#a855f7", "#3b82f6", "#f97316", "#10b981", "#f59e0b", "#ec4899"];
 
   const activeOptions: BetOption[] = editingOptions
     ? options
