@@ -165,6 +165,34 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: user.totpEnabled, totpVerified: req.session.totpVerified ?? false });
   });
 
+  // Forgot password (public — no session required)
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const schema = z.object({
+      username: z.string().min(1),
+      totpCode: z.string().length(6),
+      newPassword: z.string().min(4),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const user = await storage.getUserByUsername(parsed.data.username);
+    if (!user) return res.status(404).json({ error: "用户名不存在" });
+    if (!user.totpEnabled || !user.totpSecret) {
+      return res.status(400).json({ error: "该账号未绑定双重认证，无法通过此方式重置密码" });
+    }
+
+    const isValid = speakeasy.totp.verify({
+      secret: user.totpSecret,
+      encoding: "base32",
+      token: parsed.data.totpCode,
+      window: 1,
+    });
+    if (!isValid) return res.status(400).json({ error: "验证码错误，请重试" });
+
+    await storage.updateUserPassword(user.id, parsed.data.newPassword);
+    res.json({ ok: true });
+  });
+
   // TOTP
   app.get("/api/auth/totp/setup", requireSession, async (req, res) => {
     const user = await storage.getUser(req.session.userId!);
