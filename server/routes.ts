@@ -11,6 +11,7 @@ declare module "express-session" {
     username: string;
     nickname: string;
     role: string;
+    verifiedRooms: string[];
   }
 }
 
@@ -139,12 +140,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ROOMS
+  async function checkRoomAccess(req: any, res: any, roomId: string): Promise<boolean> {
+    if (req.session.role === "admin") return true;
+    const room = await storage.getRoom(roomId);
+    if (!room) { res.status(404).json({ error: "Room not found" }); return false; }
+    if (!room.password) return true;
+    const verified = req.session.verifiedRooms || [];
+    if (verified.includes(roomId)) return true;
+    res.status(403).json({ error: "需要输入密码", requiresPassword: true });
+    return false;
+  }
+
   app.get("/api/rooms", requireAuth, async (req, res) => {
     const roomList = await storage.getRooms();
+    const isAdmin = req.session.role === "admin";
     const enriched = await Promise.all(
       roomList.map(async (room) => {
         const round = await storage.getActiveBetRound(room.id);
-        return { ...room, hasActiveBet: !!round };
+        const base = { ...room, hasActiveBet: !!round, hasPassword: !!(room.password) };
+        if (!isAdmin) { const { password: _pw, ...rest } = base; return rest; }
+        return base;
       })
     );
     res.json(enriched);
@@ -153,7 +168,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/rooms/:id", requireAuth, async (req, res) => {
     const room = await storage.getRoom(req.params.id);
     if (!room) return res.status(404).json({ error: "Room not found" });
-    res.json(room);
+    if (req.session.role === "admin") return res.json(room);
+    const { password: _pw, ...rest } = room;
+    res.json({ ...rest, hasPassword: !!(room.password) });
+  });
+
+  app.post("/api/rooms/:id/enter", requireAuth, async (req, res) => {
+    const room = await storage.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    if (req.session.role === "admin") return res.json({ ok: true });
+    if (room.password) {
+      const schema = z.object({ password: z.string() });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success || parsed.data.password !== room.password) {
+        return res.status(403).json({ error: "密码错误" });
+      }
+    }
+    if (!req.session.verifiedRooms) req.session.verifiedRooms = [];
+    if (!req.session.verifiedRooms.includes(req.params.id)) {
+      req.session.verifiedRooms.push(req.params.id);
+    }
+    req.session.save(() => res.json({ ok: true }));
+  });
+
+  app.patch("/api/admin/rooms/:id/password", requireAdmin, async (req, res) => {
+    const schema = z.object({ password: z.string().max(100) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid password" });
+    const room = await storage.updateRoom(req.params.id, { password: parsed.data.password });
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    res.json({ ok: true, hasPassword: !!(room.password) });
   });
 
   app.post("/api/rooms", requireAdmin, async (req, res) => {
@@ -201,6 +245,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // MESSAGES
   app.get("/api/rooms/:id/messages", requireAuth, async (req, res) => {
+    if (!await checkRoomAccess(req, res, req.params.id)) return;
     const msgs = await storage.getMessages(req.params.id, 100);
     res.json(msgs);
   });
@@ -236,6 +281,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // BET ROUNDS
   app.get("/api/rooms/:id/bet-round", requireAuth, async (req, res) => {
+    if (!await checkRoomAccess(req, res, req.params.id)) return;
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round) return res.json(null);
     const betsForRound = await storage.getBetsForRound(round.id);

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -6,8 +7,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import Header from "@/components/header";
-import { Users, MessageSquare, ChevronRight, LogOut, Shield } from "lucide-react";
+import { Users, MessageSquare, ChevronRight, LogOut, Shield, Lock } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 type Room = {
   id: string;
@@ -15,6 +24,7 @@ type Room = {
   description: string;
   isActive: boolean;
   hasActiveBet: boolean;
+  hasPassword: boolean;
   createdAt: string;
 };
 
@@ -22,6 +32,8 @@ export default function LobbyPage() {
   const { user, isAdmin } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [pendingRoom, setPendingRoom] = useState<Room | null>(null);
+  const [passwordInput, setPasswordInput] = useState("");
 
   const { data: rooms, isLoading } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
@@ -35,6 +47,34 @@ export default function LobbyPage() {
       setLocation("/auth");
     },
   });
+
+  const enterMutation = useMutation({
+    mutationFn: ({ roomId, password }: { roomId: string; password: string }) =>
+      apiRequest("POST", `/api/rooms/${roomId}/enter`, { password }),
+    onSuccess: (_, vars) => {
+      setPendingRoom(null);
+      setPasswordInput("");
+      setLocation(`/room/${vars.roomId}`);
+    },
+    onError: () => {
+      toast({ title: "密码错误", description: "请重新输入", variant: "destructive" });
+    },
+  });
+
+  const handleRoomClick = (room: Room) => {
+    if (room.hasPassword && !isAdmin) {
+      setPendingRoom(room);
+      setPasswordInput("");
+    } else {
+      setLocation(`/room/${room.id}`);
+    }
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingRoom) return;
+    enterMutation.mutate({ roomId: pendingRoom.id, password: passwordInput });
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -83,7 +123,7 @@ export default function LobbyPage() {
               <button
                 key={room.id}
                 data-testid={`card-room-${room.id}`}
-                onClick={() => setLocation(`/room/${room.id}`)}
+                onClick={() => handleRoomClick(room)}
                 className="group text-left bg-card border border-card-border rounded-lg p-5 hover-elevate transition-all cursor-pointer"
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
@@ -92,7 +132,12 @@ export default function LobbyPage() {
                       <MessageSquare className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h2 className="font-semibold text-base leading-tight">{room.name}</h2>
+                      <div className="flex items-center gap-1.5">
+                        <h2 className="font-semibold text-base leading-tight">{room.name}</h2>
+                        {room.hasPassword && !isAdmin && (
+                          <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        )}
+                      </div>
                       {room.description && (
                         <p className="text-muted-foreground text-xs mt-0.5 line-clamp-1">{room.description}</p>
                       )}
@@ -112,6 +157,12 @@ export default function LobbyPage() {
                     <MessageSquare className="w-3 h-3" />
                     聊天室
                   </span>
+                  {room.hasPassword && !isAdmin && (
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      需要密码
+                    </span>
+                  )}
                 </div>
               </button>
             ))}
@@ -124,6 +175,49 @@ export default function LobbyPage() {
           </div>
         )}
       </main>
+
+      <Dialog open={!!pendingRoom} onOpenChange={(open) => { if (!open) { setPendingRoom(null); setPasswordInput(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-primary" />
+              输入房间密码
+            </DialogTitle>
+            <DialogDescription>
+              「{pendingRoom?.name}」需要密码才能进入
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePasswordSubmit} className="space-y-4 mt-2">
+            <Input
+              data-testid="input-room-password"
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="请输入房间密码"
+              autoFocus
+              autoComplete="off"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => { setPendingRoom(null); setPasswordInput(""); }}
+              >
+                取消
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                data-testid="button-enter-room"
+                disabled={!passwordInput || enterMutation.isPending}
+              >
+                {enterMutation.isPending ? "验证中..." : "进入"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

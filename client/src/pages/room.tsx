@@ -33,10 +33,17 @@ export default function RoomPage() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const { data: room } = useQuery<Room>({ queryKey: [`/api/rooms/${roomId}`], enabled: !!roomId });
-  const { data: messages, isLoading: msgsLoading } = useQuery<Message[]>({
+  const { data: messages, isLoading: msgsLoading, error: msgsError } = useQuery<Message[]>({
     queryKey: [`/api/rooms/${roomId}/messages`],
     enabled: !!roomId,
   });
+
+  useEffect(() => {
+    if (msgsError && (msgsError as Error).message === "需要输入密码") {
+      toast({ title: "需要密码", description: "请从大厅输入房间密码后进入", variant: "destructive" });
+      setLocation("/");
+    }
+  }, [msgsError]);
   const { data: betRoundData } = useQuery<BetRoundWithBets | null>({
     queryKey: [`/api/rooms/${roomId}/bet-round`],
     enabled: !!roomId,

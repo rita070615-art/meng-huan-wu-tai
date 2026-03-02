@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -195,7 +195,8 @@ function RoomsAdmin() {
                   </div>
                 </div>
                 {selectedRoom === room.id && (
-                  <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4">
+                  <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4 space-y-3">
+                    <RoomPasswordManager room={room} />
                     <BetRoundManager roomId={room.id} />
                   </div>
                 )}
@@ -208,6 +209,72 @@ function RoomsAdmin() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function RoomPasswordManager({ room }: { room: RoomWithBet }) {
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [pw, setPw] = useState("");
+
+  const hasPassword = !!(room as any).password || !!(room as any).hasPassword;
+
+  const saveMutation = useMutation({
+    mutationFn: (password: string) =>
+      apiRequest("PATCH", `/api/admin/rooms/${room.id}/password`, { password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      setEditing(false);
+      setPw("");
+      toast({ title: pw ? "密码已设置" : "密码已移除" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        {hasPassword ? <Lock className="w-4 h-4 text-primary" /> : <LockOpen className="w-4 h-4 text-muted-foreground" />}
+        <h3 className="font-semibold text-sm">房间密码</h3>
+        {hasPassword && (
+          <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+            已加密
+          </span>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Input
+            data-testid={`input-room-password-${room.id}`}
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            placeholder="输入新密码（留空则移除密码）"
+            className="bg-background text-sm"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => saveMutation.mutate(pw)} disabled={saveMutation.isPending}>
+              <Check className="w-3.5 h-3.5 mr-1" />
+              {pw ? "设置密码" : "移除密码"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setPw(""); setEditing(false); }}>
+              取消
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="flex items-center gap-2 cursor-pointer group"
+          onClick={() => setEditing(true)}
+        >
+          <div className="flex items-center gap-2 text-muted-foreground text-xs border border-dashed border-border rounded-md px-3 py-1.5 group-hover:border-primary/50 group-hover:text-primary transition-colors w-full">
+            <Lock className="w-3 h-3" />
+            {hasPassword ? "点击修改或移除密码..." : "点击设置房间密码..."}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
