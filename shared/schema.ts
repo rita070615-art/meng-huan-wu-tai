@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("user"),
   notes: text("notes").default(""),
   banned: boolean("banned").notNull().default(false),
+  muted: boolean("muted").notNull().default(false),
   isShill: boolean("is_shill").notNull().default(false),
   registrationIp: text("registration_ip").default(""),
   totpSecret: text("totp_secret"),

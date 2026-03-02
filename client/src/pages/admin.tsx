@@ -15,11 +15,11 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; isShill: boolean };
+type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -1083,13 +1083,18 @@ type PmMessage = { id: string; userId: string; userUsername: string; userNicknam
 
 function AdminInbox() {
   const { toast } = useToast();
-  const { user } = useAuth();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { data: threads, isLoading } = useQuery<PmThread[]>({
     queryKey: ["/api/admin/private-messages"],
     refetchInterval: 5000,
+  });
+
+  const { data: allUsers } = useQuery<AdminUser[]>({
+    queryKey: ["/api/admin/users"],
+    refetchInterval: 10000,
   });
 
   const { data: conversation, isLoading: convLoading } = useQuery<PmMessage[]>({
@@ -1109,8 +1114,41 @@ function AdminInbox() {
     onError: (e: Error) => toast({ title: "发送失败", description: e.message, variant: "destructive" }),
   });
 
+  const muteMutation = useMutation({
+    mutationFn: ({ id, muted }: { id: string; muted: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/mute`, { muted }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: vars.muted ? "已禁言该用户" : "已解除禁言" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const banMutation = useMutation({
+    mutationFn: ({ id, banned }: { id: string; banned: boolean }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/ban`, { banned }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: vars.banned ? "账号已封禁" : "账号已解封" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteThreadMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest("DELETE", `/api/admin/private-messages/${userId}`),
+    onSuccess: () => {
+      setSelectedUserId(null);
+      setConfirmDelete(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/private-messages"] });
+      toast({ title: "聊天记录已删除" });
+    },
+    onError: (e: Error) => toast({ title: "删除失败", description: e.message, variant: "destructive" }),
+  });
+
   const totalUnread = threads?.reduce((sum, t) => sum + t.unread, 0) ?? 0;
   const selectedThread = threads?.find((t) => t.userId === selectedUserId);
+  const selectedUserInfo = allUsers?.find((u) => u.id === selectedUserId);
 
   return (
     <div className="space-y-4">
@@ -1137,26 +1175,36 @@ function AdminInbox() {
                   暂无私信
                 </div>
               ) : (
-                threads.map((thread) => (
-                  <button
-                    key={thread.userId}
-                    data-testid={`thread-item-${thread.userId}`}
-                    onClick={() => setSelectedUserId(thread.userId)}
-                    className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedUserId === thread.userId ? "bg-muted" : ""}`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium text-sm truncate max-w-[120px]">
-                        {thread.userNickname || thread.userUsername}
-                      </span>
-                      {thread.unread > 0 && (
-                        <span className="bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 font-bold shrink-0">
-                          {thread.unread}
+                threads.map((thread) => {
+                  const uInfo = allUsers?.find((u) => u.id === thread.userId);
+                  return (
+                    <button
+                      key={thread.userId}
+                      data-testid={`thread-item-${thread.userId}`}
+                      onClick={() => { setSelectedUserId(thread.userId); setConfirmDelete(false); }}
+                      className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedUserId === thread.userId ? "bg-muted" : ""}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="font-medium text-sm truncate max-w-[120px]">
+                          {thread.userNickname || thread.userUsername}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{thread.lastMessage}</p>
-                  </button>
-                ))
+                        {thread.unread > 0 && (
+                          <span className="bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 font-bold shrink-0">
+                            {thread.unread}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] font-mono text-muted-foreground/70 bg-muted/60 px-1 rounded">
+                          ID:{thread.userId.slice(0, 8).toUpperCase()}
+                        </span>
+                        {uInfo?.muted && <MicOff className="w-3 h-3 text-amber-500" />}
+                        {uInfo?.banned && <Ban className="w-3 h-3 text-destructive" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{thread.lastMessage}</p>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -1169,18 +1217,83 @@ function AdminInbox() {
               </div>
             ) : (
               <>
-                <div className="p-4 border-b border-border flex items-center gap-3">
+                <div className="p-3 border-b border-border flex items-center gap-2">
                   <button
                     onClick={() => setSelectedUserId(null)}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground shrink-0"
                     data-testid="button-back-threads"
                   >
                     <ArrowLeft className="w-4 h-4" />
                   </button>
-                  <div>
-                    <p className="font-semibold text-sm">{selectedThread?.userNickname || selectedThread?.userUsername}</p>
-                    {selectedThread?.userNickname && (
-                      <p className="text-xs text-muted-foreground">@{selectedThread.userUsername}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-sm truncate">{selectedThread?.userNickname || selectedThread?.userUsername}</p>
+                      {selectedUserInfo?.muted && <MicOff className="w-3.5 h-3.5 text-amber-500 shrink-0" title="已禁言" />}
+                      {selectedUserInfo?.banned && <Ban className="w-3.5 h-3.5 text-destructive shrink-0" title="已封号" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      ID:{selectedUserId.slice(0, 8).toUpperCase()}
+                      {selectedThread?.userNickname && ` · @${selectedThread.userUsername}`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      data-testid="button-inbox-mute"
+                      size="sm"
+                      variant={selectedUserInfo?.muted ? "secondary" : "outline"}
+                      className={`h-7 px-2 text-xs ${!selectedUserInfo?.muted ? "hover:border-amber-500 hover:text-amber-500" : ""}`}
+                      title={selectedUserInfo?.muted ? "解除禁言" : "禁言"}
+                      disabled={muteMutation.isPending || !selectedUserId}
+                      onClick={() => selectedUserInfo && muteMutation.mutate({ id: selectedUserInfo.id, muted: !selectedUserInfo.muted })}
+                    >
+                      {selectedUserInfo?.muted ? <Mic className="w-3.5 h-3.5 text-amber-500" /> : <MicOff className="w-3.5 h-3.5" />}
+                      <span className="ml-1">{selectedUserInfo?.muted ? "解言" : "禁言"}</span>
+                    </Button>
+                    <Button
+                      data-testid="button-inbox-ban"
+                      size="sm"
+                      variant={selectedUserInfo?.banned ? "secondary" : "outline"}
+                      className={`h-7 px-2 text-xs ${!selectedUserInfo?.banned ? "hover:border-destructive hover:text-destructive" : ""}`}
+                      title={selectedUserInfo?.banned ? "解除封号" : "封号"}
+                      disabled={banMutation.isPending || !selectedUserId}
+                      onClick={() => selectedUserInfo && banMutation.mutate({ id: selectedUserInfo.id, banned: !selectedUserInfo.banned })}
+                    >
+                      {selectedUserInfo?.banned ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" /> : <Ban className="w-3.5 h-3.5" />}
+                      <span className="ml-1">{selectedUserInfo?.banned ? "解封" : "封号"}</span>
+                    </Button>
+                    {confirmDelete ? (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          data-testid="button-inbox-delete-confirm"
+                          size="sm"
+                          variant="destructive"
+                          className="h-7 px-2 text-xs"
+                          disabled={deleteThreadMutation.isPending}
+                          onClick={() => deleteThreadMutation.mutate(selectedUserId)}
+                        >
+                          {deleteThreadMutation.isPending ? "..." : "确认删除"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => setConfirmDelete(false)}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        data-testid="button-inbox-delete"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs hover:border-destructive hover:text-destructive"
+                        title="删除聊天记录"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="ml-1">删除聊天</span>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1189,6 +1302,11 @@ function AdminInbox() {
                   {convLoading ? (
                     <div className="space-y-2">
                       {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+                    </div>
+                  ) : !conversation?.length ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm">
+                      <Mail className="w-8 h-8 mb-2 opacity-20" />
+                      <p>暂无消息</p>
                     </div>
                   ) : conversation?.map((msg) => (
                     <div

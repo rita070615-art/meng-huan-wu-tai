@@ -21,6 +21,7 @@ export interface IStorage {
   updateUserNotes(id: string, notes: string): Promise<User | undefined>;
   updateUserNickname(id: string, nickname: string): Promise<User | undefined>;
   banUser(id: string, banned: boolean): Promise<User | undefined>;
+  muteUser(id: string, muted: boolean): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   // Rooms
@@ -64,6 +65,7 @@ export interface IStorage {
   getPrivateMessagesForAdmin(userId: string): Promise<PrivateMessage[]>;
   markReadByAdmin(userId: string): Promise<void>;
   markReadByUser(userId: string): Promise<void>;
+  deletePrivateThread(userId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -121,6 +123,11 @@ export class DbStorage implements IStorage {
 
   async banUser(id: string, banned: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ banned }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async muteUser(id: string, muted: boolean): Promise<User | undefined> {
+    const result = await db.update(users).set({ muted }).where(eq(users.id, id)).returning();
     return result[0];
   }
 
@@ -308,6 +315,10 @@ export class DbStorage implements IStorage {
 
   async markReadByUser(userId: string): Promise<void> {
     await db.update(privateMessages).set({ readByUser: true }).where(and(eq(privateMessages.userId, userId), eq(privateMessages.isFromAdmin, true)));
+  }
+
+  async deletePrivateThread(userId: string): Promise<void> {
+    await db.delete(privateMessages).where(eq(privateMessages.userId, userId));
   }
 }
 

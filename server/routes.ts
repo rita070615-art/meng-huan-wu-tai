@@ -387,6 +387,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const sender = await storage.getUser(req.session.userId!);
     if (!sender) return res.status(401).json({ error: "用户不存在" });
     if (sender.banned) return res.status(403).json({ error: "账号已被封禁" });
+    if (sender.muted) return res.status(403).json({ error: "您已被禁言，无法发送消息" });
     if (sender.role !== "admin" && sender.balance < 1) {
       return res.status(403).json({ error: "积分不足，余额需至少 1 分才能发言" });
     }
@@ -571,7 +572,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, isShill: u.isShill })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, muted: u.muted, isShill: u.isShill })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
@@ -620,6 +621,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const user = await storage.banUser(req.params.id, parsed.data.banned);
     res.json({ id: user!.id, username: user!.username, banned: user!.banned });
+  });
+
+  app.patch("/api/admin/users/:id/mute", requireAdmin, async (req, res) => {
+    const schema = z.object({ muted: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (target.role === "admin") return res.status(400).json({ error: "不能禁言管理员账号" });
+
+    const user = await storage.muteUser(req.params.id, parsed.data.muted);
+    res.json({ id: user!.id, username: user!.username, muted: user!.muted });
   });
 
   app.patch("/api/admin/users/:id/shill", requireAdmin, async (req, res) => {
@@ -685,6 +699,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/private-messages", requireAdmin, async (req, res) => {
     const threads = await storage.getAllPrivateMessageThreads();
     res.json(threads);
+  });
+
+  app.delete("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
+    await storage.deletePrivateThread(req.params.userId);
+    res.json({ ok: true });
   });
 
   app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
