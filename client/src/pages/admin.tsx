@@ -603,6 +603,9 @@ function UsersAdmin() {
   const [editNotes, setEditNotes] = useState("");
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
   const [editNickname, setEditNickname] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 5;
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -663,19 +666,46 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
   });
 
+  const sortedUsers = users ? [
+    ...users.filter(u => u.role === "admin"),
+    ...users.filter(u => u.role !== "admin"),
+  ] : [];
+
+  const filteredUsers = sortedUsers.filter(u => {
+    const q = searchQuery.toLowerCase();
+    return !q || u.username.toLowerCase().includes(q) || (u.nickname || "").toLowerCase().includes(q);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const pagedUsers = filteredUsers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const getSeqNum = (userId: string) => {
+    const idx = sortedUsers.findIndex(u => u.id === userId);
+    return idx >= 0 ? idx + 1 : "?";
+  };
+
   return (
     <div>
       <h2 className="font-semibold mb-3 flex items-center gap-2">
         <Users className="w-4 h-4" />
         用户列表
       </h2>
+      <div className="mb-3">
+        <Input
+          data-testid="input-user-search"
+          placeholder="搜索用户名或昵称..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+          className="h-8 text-sm"
+        />
+      </div>
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
         </div>
-      ) : users && users.length > 0 ? (
+      ) : pagedUsers.length > 0 ? (
         <div className="space-y-2">
-          {users.map((u) => (
+          {pagedUsers.map((u) => (
             <div
               key={u.id}
               data-testid={`admin-user-${u.id}`}
@@ -741,8 +771,8 @@ function UsersAdmin() {
                   <p className="text-xs text-muted-foreground mt-0.5">
                     @{u.username} · {u.role === "admin" ? "管理员" : u.isShill ? "托管账户" : "普通用户"}
                   </p>
-                  <p className="text-xs text-muted-foreground/60 font-mono select-all mt-0.5">
-                    ID: {u.id}
+                  <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">
+                    编号：#{getSeqNum(u.id)}
                   </p>
                 </div>
 
@@ -908,7 +938,36 @@ function UsersAdmin() {
         </div>
       ) : (
         <div className="bg-card border border-card-border rounded-lg p-8 text-center text-muted-foreground text-sm">
-          暂无用户
+          {searchQuery ? "没有找到匹配的用户" : "暂无用户"}
+        </div>
+      )}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-3">
+          <span className="text-xs text-muted-foreground">
+            第 {currentPage} / {totalPages} 页，共 {filteredUsers.length} 人
+          </span>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-3 text-xs"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              data-testid="button-prev-page"
+            >
+              上一页
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-3 text-xs"
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              data-testid="button-next-page"
+            >
+              下一页
+            </Button>
+          </div>
         </div>
       )}
     </div>

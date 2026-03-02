@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare, Trash2, MicOff, Ban, Settings, Play, Square, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
+import { Send, Coins, TrendingUp, Lock, Trophy, Trash2, MicOff, Ban, Settings, Play, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
@@ -22,7 +22,6 @@ export default function RoomPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const [mobileTab, setMobileTab] = useState<"chat" | "bet">("chat");
   const [messageText, setMessageText] = useState("");
   const [betAmount, setBetAmount] = useState("100");
   const [selectedOption, setSelectedOption] = useState<string>("");
@@ -49,6 +48,7 @@ export default function RoomPage() {
       setLocation("/");
     }
   }, [msgsError]);
+
   const { data: betRoundData } = useQuery<BetRoundWithBets | null>({
     queryKey: [`/api/rooms/${roomId}/bet-round`],
     enabled: !!roomId,
@@ -229,9 +229,6 @@ export default function RoomPage() {
     return acc;
   }, {} as Record<string, number>);
 
-  const chatDisabled = !isAdmin && chatMuted;
-  const chatPlaceholder = chatMuted && !isAdmin ? "聊天室已被禁言" : (user && user.balance < 1 && !isAdmin ? "余额不足，无法发言" : "输入消息...");
-
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
@@ -347,13 +344,15 @@ export default function RoomPage() {
       )}
 
       <div className="flex overflow-hidden flex-1">
-        <div className={`flex-1 flex flex-col min-w-0 border-r border-border ${mobileTab === "bet" ? "hidden md:flex" : "flex"}`}>
+        {/* Chat area */}
+        <div className="flex-1 flex flex-col min-w-0 border-r border-border">
           {chatMuted && !isAdmin && (
             <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
               <MicOff className="w-3.5 h-3.5" />
               管理员已开启全体禁言
             </div>
           )}
+
           <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-messages">
             {msgsLoading ? (
               <div className="space-y-3">
@@ -375,85 +374,31 @@ export default function RoomPage() {
             <div ref={messagesEndRef} />
           </div>
 
-          {user && user.balance < 1 && !isAdmin && (
-            <div className="px-3 py-2 bg-destructive/10 border-t border-destructive/20 text-xs text-destructive text-center">
-              余额不足，需至少 1 分才能发言
-            </div>
+          {/* Admin: chat input */}
+          {isAdmin && (
+            <form onSubmit={handleSend} className="p-3 border-t border-border flex gap-2">
+              <Input
+                data-testid="input-message"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder="输入消息..."
+                className="flex-1 bg-card border-card-border"
+                autoComplete="off"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                data-testid="button-send"
+                disabled={sendMutation.isPending || !messageText.trim()}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
           )}
 
-          <form onSubmit={handleSend} className="p-3 border-t border-border flex gap-2">
-            <Input
-              data-testid="input-message"
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              placeholder={chatPlaceholder}
-              className="flex-1 bg-card border-card-border"
-              autoComplete="off"
-              disabled={chatDisabled || !!(user && user.balance < 1 && !isAdmin)}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              data-testid="button-send"
-              disabled={sendMutation.isPending || !messageText.trim() || chatDisabled || !!(user && user.balance < 1 && !isAdmin)}
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
-        </div>
-
-        <div className={`md:w-80 flex-shrink-0 flex-col overflow-hidden bg-card/30 ${mobileTab === "bet" ? "flex flex-1 md:flex-none" : "hidden md:flex"}`}>
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center">
-                <TrendingUp className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <h3 className="font-semibold text-sm">菜单面板</h3>
-              {currentRound ? (
-                <Badge variant="default" className="ml-auto text-xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
-                  进行中
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  <Lock className="w-2.5 h-2.5 mr-1" />
-                  未开放
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">选择你的菜单</p>
-          </div>
-
-          {currentRound ? (
-            <div className="p-4 border-b border-border space-y-3">
-              <div
-                className="grid gap-2"
-                style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
-              >
-                {options.map((opt, i) => {
-                  const total = optionTotals[opt.key] || 0;
-                  const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
-                  return (
-                    <button
-                      key={opt.key}
-                      data-testid={`button-bet-option-${opt.key}`}
-                      onClick={() => !userAlreadyBet && setSelectedOption(opt.key)}
-                      disabled={userAlreadyBet}
-                      className={`relative flex flex-col items-center justify-center py-3 px-2 rounded-md border-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
-                        selectedOption === opt.key
-                          ? "border-primary bg-primary/15"
-                          : "border-border bg-background/60"
-                      }`}
-                    >
-                      <span className="text-lg font-bold" style={{ color: opt.color }}>
-                        {opt.label}
-                      </span>
-                      <span className="text-xs text-muted-foreground mt-0.5">{pct}%</span>
-                    </button>
-                  );
-                })}
-              </div>
-
+          {/* Non-admin: betting panel in chat when round active */}
+          {!isAdmin && currentRound && (
+            <div className="border-t border-border p-3 space-y-2.5 bg-card/40">
               {pendingBet ? (
                 <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-3 space-y-2">
                   <p className="text-sm font-medium text-center">确认您的点餐？</p>
@@ -489,62 +434,122 @@ export default function RoomPage() {
                     </Button>
                   </div>
                 </div>
+              ) : userAlreadyBet ? (
+                <div className="text-center text-xs text-muted-foreground py-2 flex items-center justify-center gap-1.5">
+                  <span className="text-green-500">✓</span> 已完成点餐，等待结果
+                </div>
               ) : (
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Coins className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                    <Input
-                      data-testid="input-bet-amount"
-                      type="number"
-                      min={1}
-                      value={betAmount}
-                      onChange={(e) => setBetAmount(e.target.value)}
-                      disabled={userAlreadyBet}
-                      className="pl-8 bg-background border-border text-sm h-9"
-                    />
-                  </div>
-                  <Button
-                    data-testid="button-place-bet"
-                    onClick={handleBet}
-                    disabled={betMutation.isPending || userAlreadyBet || !selectedOption}
-                    size="sm"
-                    className="h-9 px-4 shrink-0"
+                <div className="space-y-2">
+                  <div
+                    className="grid gap-2"
+                    style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
                   >
-                    {userAlreadyBet ? "已点餐" : "点餐"}
-                  </Button>
-                </div>
-              )}
-
-              {totalPool > 0 && (
-                <div className="flex items-center justify-between text-xs text-muted-foreground bg-muted/40 rounded-md px-2.5 py-1.5">
-                  <span>总奖池</span>
-                  <span className="font-semibold flex items-center gap-1">
-                    <Coins className="w-3 h-3 text-yellow-500" />
-                    {totalPool.toLocaleString()}
-                  </span>
-                </div>
-              )}
-
-              {!pendingBet && (
-                <div className="flex gap-1 flex-wrap">
-                  {[50, 100, 500, 1000].map((v) => (
-                    <button
-                      key={v}
-                      data-testid={`button-quick-bet-${v}`}
-                      onClick={() => setBetAmount(String(v))}
-                      disabled={userAlreadyBet}
-                      className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground disabled:opacity-40 transition-opacity"
+                    {options.map((opt) => {
+                      const total = optionTotals[opt.key] || 0;
+                      const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
+                      return (
+                        <button
+                          key={opt.key}
+                          data-testid={`button-bet-option-${opt.key}`}
+                          onClick={() => setSelectedOption(opt.key)}
+                          className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-md border-2 transition-all cursor-pointer ${
+                            selectedOption === opt.key
+                              ? "border-primary bg-primary/15"
+                              : "border-border bg-background/60"
+                          }`}
+                        >
+                          <span className="text-base font-bold" style={{ color: opt.color }}>{opt.label}</span>
+                          <span className="text-xs text-muted-foreground mt-0.5">{pct}%</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Coins className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                      <Input
+                        data-testid="input-bet-amount"
+                        type="number"
+                        min={1}
+                        value={betAmount}
+                        onChange={(e) => setBetAmount(e.target.value)}
+                        className="pl-8 bg-background border-border text-sm h-9"
+                      />
+                    </div>
+                    <Button
+                      data-testid="button-place-bet"
+                      onClick={handleBet}
+                      disabled={betMutation.isPending || !selectedOption}
+                      size="sm"
+                      className="h-9 px-4 shrink-0"
                     >
-                      {v}
-                    </button>
-                  ))}
+                      点餐
+                    </Button>
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    {[50, 100, 500, 1000].map((v) => (
+                      <button
+                        key={v}
+                        data-testid={`button-quick-bet-${v}`}
+                        onClick={() => setBetAmount(String(v))}
+                        className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
-          ) : (
-            <div className="p-6 flex flex-col items-center justify-center text-center border-b border-border">
-              <Lock className="w-8 h-8 text-muted-foreground mb-2 opacity-40" />
-              <p className="text-sm text-muted-foreground">等待管理员开启点餐</p>
+          )}
+        </div>
+
+        {/* Right sidebar: live bets (desktop only) */}
+        <div className="hidden md:flex md:w-72 flex-shrink-0 flex-col overflow-hidden bg-card/30">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-sm">菜单状态</h3>
+            </div>
+            {currentRound ? (
+              <Badge variant="default" className="text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
+                进行中
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs">
+                <Lock className="w-2.5 h-2.5 mr-1" />
+                未开放
+              </Badge>
+            )}
+          </div>
+
+          {currentRound && totalPool > 0 && (
+            <div className="px-4 py-2 border-b border-border">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>总奖池</span>
+                <span className="font-semibold flex items-center gap-1">
+                  <Coins className="w-3 h-3 text-yellow-500" />
+                  {totalPool.toLocaleString()}
+                </span>
+              </div>
+              {options.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {options.map(opt => {
+                    const total = optionTotals[opt.key] || 0;
+                    const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
+                    return (
+                      <div key={opt.key} className="flex items-center gap-2 text-xs">
+                        <span className="w-12 font-medium truncate" style={{ color: opt.color }}>{opt.label}</span>
+                        <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: opt.color }} />
+                        </div>
+                        <span className="text-muted-foreground w-8 text-right">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -573,10 +578,10 @@ export default function RoomPage() {
                         className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
                         style={{ backgroundColor: color }}
                       >
-                        {opt?.label || bet.option}
+                        {opt?.label?.[0] || bet.option}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{bet.nickname || bet.username}</p>
+                        <p className="text-sm font-medium truncate">{bet.nickname || "匿名用户"}</p>
                         <p className="text-xs text-muted-foreground">
                           {new Date(bet.createdAt).toLocaleTimeString("zh-CN", {
                             hour: "2-digit",
@@ -595,33 +600,6 @@ export default function RoomPage() {
             </div>
           </div>
         </div>
-
-      </div>
-
-      <div className="md:hidden flex border-t border-border bg-background shrink-0">
-        <button
-          data-testid="mobile-tab-chat"
-          onClick={() => setMobileTab("chat")}
-          className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs font-medium transition-colors ${
-            mobileTab === "chat" ? "text-primary" : "text-muted-foreground"
-          }`}
-        >
-          <MessageSquare className="w-5 h-5" />
-          聊天
-        </button>
-        <button
-          data-testid="mobile-tab-bet"
-          onClick={() => setMobileTab("bet")}
-          className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs font-medium transition-colors relative ${
-            mobileTab === "bet" ? "text-primary" : "text-muted-foreground"
-          }`}
-        >
-          <TrendingUp className="w-5 h-5" />
-          点餐
-          {currentRound && (
-            <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-primary animate-pulse" />
-          )}
-        </button>
       </div>
     </div>
   );
@@ -659,15 +637,16 @@ function ChatMessage({
   if (isSystem) {
     const lines = msg.content.split("\n");
     return (
-      <div className="flex justify-center my-2">
-        <span className="text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg max-w-sm text-center">
+      <div className="flex flex-col items-start">
+        <span className="text-xs text-muted-foreground mb-0.5 ml-1">系统</span>
+        <div className="bg-muted/70 border border-border/50 px-3 py-2 rounded-lg rounded-bl-sm text-sm text-foreground max-w-xs lg:max-w-sm">
           {lines.map((line, i) => (
             <span key={i}>
               {line}
               {i < lines.length - 1 && <br />}
             </span>
           ))}
-        </span>
+        </div>
       </div>
     );
   }
