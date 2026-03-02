@@ -598,6 +598,7 @@ function UsersAdmin() {
   const { toast } = useToast();
   const [editingBalance, setEditingBalance] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState("");
+  const [pendingBalance, setPendingBalance] = useState<{ id: string; amount: number } | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
@@ -613,6 +614,7 @@ function UsersAdmin() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setEditingBalance(null);
+      setPendingBalance(null);
       toast({ title: "余额已更新" });
     },
     onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
@@ -745,33 +747,58 @@ function UsersAdmin() {
                 </div>
 
                 {editingBalance === u.id ? (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Input
-                      data-testid={`input-balance-${u.id}`}
-                      type="number"
-                      min={0}
-                      value={editBalance}
-                      onChange={(e) => setEditBalance(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") updateBalanceMutation.mutate({ id: u.id, balance: parseInt(editBalance) });
-                        if (e.key === "Escape") setEditingBalance(null);
-                      }}
-                      className="w-28 h-8 text-sm"
-                      autoFocus
-                    />
-                    <Button
-                      size="sm"
-                      variant="default"
-                      data-testid={`button-save-balance-${u.id}`}
-                      onClick={() => updateBalanceMutation.mutate({ id: u.id, balance: parseInt(editBalance) })}
-                      disabled={updateBalanceMutation.isPending}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setEditingBalance(null)}>
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
+                  pendingBalance?.id === u.id ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-yellow-400 font-medium whitespace-nowrap">
+                        确认修改为 {pendingBalance.amount.toLocaleString()} 分？
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="default"
+                        data-testid={`button-confirm-balance-${u.id}`}
+                        onClick={() => {
+                          updateBalanceMutation.mutate({ id: u.id, balance: pendingBalance.amount });
+                          setPendingBalance(null);
+                        }}
+                        disabled={updateBalanceMutation.isPending}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        确认
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setPendingBalance(null)}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Input
+                        data-testid={`input-balance-${u.id}`}
+                        type="number"
+                        min={0}
+                        value={editBalance}
+                        onChange={(e) => setEditBalance(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") setPendingBalance({ id: u.id, amount: parseInt(editBalance) });
+                          if (e.key === "Escape") setEditingBalance(null);
+                        }}
+                        className="w-28 h-8 text-sm"
+                        autoFocus
+                      />
+                      <Button
+                        size="sm"
+                        variant="default"
+                        data-testid={`button-save-balance-${u.id}`}
+                        onClick={() => setPendingBalance({ id: u.id, amount: parseInt(editBalance) })}
+                        disabled={!editBalance || isNaN(parseInt(editBalance))}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditingBalance(null)}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  )
                 ) : (
                   <div className="flex items-center gap-2 shrink-0">
                     <span
