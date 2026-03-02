@@ -31,6 +31,7 @@ export default function RoomPage() {
   const [liveRound, setLiveRound] = useState<BetRoundWithBets | null | undefined>(undefined);
   const [chatMuted, setChatMuted] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
+  const [pendingWinner, setPendingWinner] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -108,6 +109,7 @@ export default function RoomPage() {
         }
         if (data.type === "BET_ROUND_CLOSED") {
           setLiveRound(null);
+          setPendingWinner(null);
           if (data.message) setLiveMessages((prev) => [...prev, data.message]);
           queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -280,23 +282,59 @@ export default function RoomPage() {
           </div>
           {isAdmin && adminPanelOpen && currentRound && (
             <div className="px-3 pb-2 border-t border-border/50">
-              <div className="flex items-center gap-2 flex-wrap pt-2">
-                <span className="text-xs text-muted-foreground">点餐进行中 — 选择获胜选项结束：</span>
-                {(currentRound.options as BetOption[]).map((opt) => (
-                  <Button
-                    key={opt.key}
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2 text-xs"
-                    style={{ borderColor: opt.color, color: opt.color }}
-                    disabled={closeRoundMutation.isPending}
-                    onClick={() => { closeRoundMutation.mutate(opt.key); setAdminPanelOpen(false); }}
-                    data-testid={`button-admin-close-round-${opt.key}`}
-                  >
-                    {opt.label} 获胜
-                  </Button>
-                ))}
-              </div>
+              {!pendingWinner ? (
+                <div className="flex items-center gap-2 flex-wrap pt-2">
+                  <span className="text-xs text-muted-foreground">选择获胜选项（第一步）：</span>
+                  {(currentRound.options as BetOption[]).map((opt) => (
+                    <Button
+                      key={opt.key}
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      style={{ borderColor: opt.color, color: opt.color }}
+                      onClick={() => setPendingWinner(opt.key)}
+                      data-testid={`button-admin-select-winner-${opt.key}`}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap pt-2">
+                  {(() => {
+                    const winOpt = (currentRound.options as BetOption[]).find(o => o.key === pendingWinner);
+                    return (
+                      <>
+                        <span className="text-xs font-semibold" style={{ color: winOpt?.color }}>
+                          确认开奖：{winOpt?.label} 获胜？
+                        </span>
+                        <Button
+                          size="sm"
+                          className="h-6 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
+                          disabled={closeRoundMutation.isPending}
+                          onClick={() => {
+                            closeRoundMutation.mutate(pendingWinner);
+                            setPendingWinner(null);
+                            setAdminPanelOpen(false);
+                          }}
+                          data-testid="button-admin-confirm-winner"
+                        >
+                          ✓ 确认开奖
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs text-muted-foreground"
+                          onClick={() => setPendingWinner(null)}
+                          data-testid="button-admin-cancel-winner"
+                        >
+                          取消
+                        </Button>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
           )}
         </div>
