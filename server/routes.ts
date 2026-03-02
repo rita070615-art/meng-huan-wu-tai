@@ -42,6 +42,19 @@ function broadcastAll(data: object) {
   });
 }
 
+function broadcastToUser(userId: string, data: object) {
+  const msg = JSON.stringify(data);
+  wsClients.forEach((c) => {
+    if (c.userId === userId && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(msg);
+    }
+  });
+}
+
+function broadcastToAdmins(data: object) {
+  broadcastAll(data);
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   app.use(
     session({
@@ -526,6 +539,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // WEBSOCKET
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
+  // PRIVATE MESSAGES
+  app.get("/api/private-messages", requireAuth, async (req, res) => {
+    const msgs = await storage.getPrivateMessagesForUser(req.session.userId!);
+    await storage.markReadByUser(req.session.userId!);
+    res.json(msgs);
+  });
+
+  app.post("/api/private-messages", requireAuth, async (req, res) => {
+    const schema = z.object({ content: z.string().min(1).max(1000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "消息内容无效" });
+
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const pm = await storage.createPrivateMessage({
+      userId: user.id,
+      userUsername: user.username,
+      userNickname: user.nickname ?? null,
+      content: parsed.data.content,
+      isFromAdmin: false,
+    });
+    broadcastToAdmins({ type: "NEW_PRIVATE_MESSAGE", pm });
+    res.json(pm);
+  });
+
+  app.get("/api/admin/private-messages", requireAdmin, async (req, res) => {
+    const threads = await storage.getAllPrivateMessageThreads();
+    res.json(threads);
+  });
+
+  app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
+    const msgs = await storage.getPrivateMessagesForAdmin(req.params.userId);
+    await storage.markReadByAdmin(req.params.userId);
+    res.json(msgs);
+  });
+
+  app.post("/api/admin/private-messages/:userId/reply", requireAdmin, async (req, res) => {
+    const schema = z.object({ content: z.string().min(1).max(1000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "消息内容无效" });
+
+    const targetUser = await storage.getUser(req.params.userId);
+    if (!targetUser) return res.status(404).json({ error: "用户不存在" });
+
+    const pm = await storage.createPrivateMessage({
+      userId: targetUser.id,
+      userUsername: targetUser.username,
+      userNickname: targetUser.nickname ?? null,
+      adminId: req.session.userId!,
+      adminUsername: req.session.username!,
+      content: parsed.data.content,
+      isFromAdmin: true,
+    });
+    broadcastToUser(targetUser.id, { type: "NEW_PRIVATE_MESSAGE", pm });
+    res.json(pm);
+  });
 
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://localhost`);

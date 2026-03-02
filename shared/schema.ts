@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -65,6 +65,24 @@ export const messages = pgTable("messages", {
   type: text("type").notNull().default("user"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const privateMessages = pgTable("private_messages", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  userId: varchar("user_id", { length: 36 }).notNull(),
+  userUsername: text("user_username").notNull(),
+  userNickname: text("user_nickname"),
+  adminId: varchar("admin_id", { length: 36 }),
+  adminUsername: text("admin_username"),
+  content: text("content").notNull(),
+  isFromAdmin: boolean("is_from_admin").notNull().default(false),
+  readByAdmin: boolean("read_by_admin").notNull().default(false),
+  readByUser: boolean("read_by_user").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => [index("pm_user_idx").on(t.userId)]);
+
+export const insertPrivateMessageSchema = createInsertSchema(privateMessages).pick({ content: true });
+export type InsertPrivateMessage = z.infer<typeof insertPrivateMessageSchema>;
+export type PrivateMessage = typeof privateMessages.$inferSelect;
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,

@@ -11,9 +11,11 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
+  Mail, Send, Inbox, ArrowLeft
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -49,6 +51,10 @@ export default function AdminPage() {
               <Bot className="w-4 h-4 mr-1.5" />
               托管设置
             </TabsTrigger>
+            <TabsTrigger value="inbox" data-testid="tab-inbox" className="flex-1 sm:flex-none">
+              <Mail className="w-4 h-4 mr-1.5" />
+              私信收件箱
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="rooms">
@@ -59,6 +65,9 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="bot">
             <BotAdmin />
+          </TabsContent>
+          <TabsContent value="inbox">
+            <AdminInbox />
           </TabsContent>
         </Tabs>
       </main>
@@ -1064,6 +1073,174 @@ function BotAdmin() {
             <span className="text-xs">在「用户管理」中点击 <Bot className="w-3 h-3 inline" /> 图标可将用户设为托</span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+type PmThread = { userId: string; userUsername: string; userNickname: string | null; unread: number; lastMessage: string; lastAt: string };
+type PmMessage = { id: string; userId: string; userUsername: string; userNickname: string | null; adminId: string | null; adminUsername: string | null; content: string; isFromAdmin: boolean; readByAdmin: boolean; readByUser: boolean; createdAt: string };
+
+function AdminInbox() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+
+  const { data: threads, isLoading } = useQuery<PmThread[]>({
+    queryKey: ["/api/admin/private-messages"],
+    refetchInterval: 5000,
+  });
+
+  const { data: conversation, isLoading: convLoading } = useQuery<PmMessage[]>({
+    queryKey: ["/api/admin/private-messages", selectedUserId],
+    enabled: !!selectedUserId,
+    refetchInterval: 3000,
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: (content: string) =>
+      apiRequest("POST", `/api/admin/private-messages/${selectedUserId}/reply`, { content }),
+    onSuccess: () => {
+      setReplyText("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/private-messages", selectedUserId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/private-messages"] });
+    },
+    onError: (e: Error) => toast({ title: "发送失败", description: e.message, variant: "destructive" }),
+  });
+
+  const totalUnread = threads?.reduce((sum, t) => sum + t.unread, 0) ?? 0;
+  const selectedThread = threads?.find((t) => t.userId === selectedUserId);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+        <div className="flex h-[600px]">
+          <div className="w-64 border-r border-border flex flex-col shrink-0">
+            <div className="p-4 border-b border-border flex items-center gap-2">
+              <Inbox className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-sm">私信列表</h3>
+              {totalUnread > 0 && (
+                <span className="ml-auto bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5 font-bold">
+                  {totalUnread}
+                </span>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {isLoading ? (
+                <div className="p-4 space-y-2">
+                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+                </div>
+              ) : !threads?.length ? (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm p-4 text-center">
+                  <Mail className="w-8 h-8 mb-2 opacity-30" />
+                  暂无私信
+                </div>
+              ) : (
+                threads.map((thread) => (
+                  <button
+                    key={thread.userId}
+                    data-testid={`thread-item-${thread.userId}`}
+                    onClick={() => setSelectedUserId(thread.userId)}
+                    className={`w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/50 transition-colors ${selectedUserId === thread.userId ? "bg-muted" : ""}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm truncate max-w-[120px]">
+                        {thread.userNickname || thread.userUsername}
+                      </span>
+                      {thread.unread > 0 && (
+                        <span className="bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 font-bold shrink-0">
+                          {thread.unread}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{thread.lastMessage}</p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col min-w-0">
+            {!selectedUserId ? (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-sm">
+                <Mail className="w-10 h-10 mb-3 opacity-20" />
+                <p>选择一条私信查看对话</p>
+              </div>
+            ) : (
+              <>
+                <div className="p-4 border-b border-border flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedUserId(null)}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-testid="button-back-threads"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <div>
+                    <p className="font-semibold text-sm">{selectedThread?.userNickname || selectedThread?.userUsername}</p>
+                    {selectedThread?.userNickname && (
+                      <p className="text-xs text-muted-foreground">@{selectedThread.userUsername}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {convLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
+                    </div>
+                  ) : conversation?.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`flex ${msg.isFromAdmin ? "justify-end" : "justify-start"}`}
+                    >
+                      <div
+                        className={`max-w-[75%] rounded-xl px-4 py-2 text-sm ${
+                          msg.isFromAdmin
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-foreground"
+                        }`}
+                        data-testid={`pm-msg-${msg.id}`}
+                      >
+                        <p className="break-words">{msg.content}</p>
+                        <p className={`text-xs mt-1 opacity-60 ${msg.isFromAdmin ? "text-right" : ""}`}>
+                          {new Date(msg.createdAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                          {msg.isFromAdmin && msg.adminUsername && ` · ${msg.adminUsername}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-4 border-t border-border flex gap-2">
+                  <Textarea
+                    data-testid="input-admin-reply"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="回复用户… (Enter发送, Shift+Enter换行)"
+                    className="resize-none text-sm min-h-[60px] max-h-[120px]"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && replyText.trim()) {
+                        e.preventDefault();
+                        replyMutation.mutate(replyText.trim());
+                      }
+                    }}
+                  />
+                  <Button
+                    data-testid="button-send-reply"
+                    size="icon"
+                    className="self-end shrink-0"
+                    disabled={!replyText.trim() || replyMutation.isPending}
+                    onClick={() => replyText.trim() && replyMutation.mutate(replyText.trim())}
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

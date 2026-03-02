@@ -3,8 +3,8 @@ import { Pool } from "pg";
 import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
-  users, rooms, betRounds, bets, messages, botSettings,
-  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings,
+  users, rooms, betRounds, bets, messages, botSettings, privateMessages,
+  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings, type PrivateMessage,
 } from "@shared/schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -54,6 +54,14 @@ export interface IStorage {
   updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number }): Promise<BotSettings>;
   getShillUsers(): Promise<User[]>;
   setUserShill(id: string, isShill: boolean): Promise<User | undefined>;
+
+  // Private Messages
+  createPrivateMessage(data: { userId: string; userUsername: string; userNickname?: string | null; adminId?: string; adminUsername?: string; content: string; isFromAdmin: boolean }): Promise<PrivateMessage>;
+  getPrivateMessagesForUser(userId: string): Promise<PrivateMessage[]>;
+  getAllPrivateMessageThreads(): Promise<{ userId: string; userUsername: string; userNickname: string | null; unread: number; lastMessage: string; lastAt: Date }[]>;
+  getPrivateMessagesForAdmin(userId: string): Promise<PrivateMessage[]>;
+  markReadByAdmin(userId: string): Promise<void>;
+  markReadByUser(userId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -253,6 +261,41 @@ export class DbStorage implements IStorage {
   async setUserShill(id: string, isShill: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ isShill }).where(eq(users.id, id)).returning();
     return result[0];
+  }
+
+  async createPrivateMessage(data: { userId: string; userUsername: string; userNickname?: string | null; adminId?: string; adminUsername?: string; content: string; isFromAdmin: boolean }): Promise<PrivateMessage> {
+    const [row] = await db.insert(privateMessages).values({ id: randomUUID(), ...data }).returning();
+    return row;
+  }
+
+  async getPrivateMessagesForUser(userId: string): Promise<PrivateMessage[]> {
+    return db.select().from(privateMessages).where(eq(privateMessages.userId, userId)).orderBy(privateMessages.createdAt);
+  }
+
+  async getPrivateMessagesForAdmin(userId: string): Promise<PrivateMessage[]> {
+    return db.select().from(privateMessages).where(eq(privateMessages.userId, userId)).orderBy(privateMessages.createdAt);
+  }
+
+  async getAllPrivateMessageThreads(): Promise<{ userId: string; userUsername: string; userNickname: string | null; unread: number; lastMessage: string; lastAt: Date }[]> {
+    const all = await db.select().from(privateMessages).orderBy(desc(privateMessages.createdAt));
+    const threads = new Map<string, { userId: string; userUsername: string; userNickname: string | null; unread: number; lastMessage: string; lastAt: Date }>();
+    for (const pm of all) {
+      if (!threads.has(pm.userId)) {
+        threads.set(pm.userId, { userId: pm.userId, userUsername: pm.userUsername, userNickname: pm.userNickname ?? null, unread: 0, lastMessage: pm.content, lastAt: pm.createdAt });
+      }
+      if (!pm.isFromAdmin && !pm.readByAdmin) {
+        threads.get(pm.userId)!.unread++;
+      }
+    }
+    return Array.from(threads.values()).sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
+  }
+
+  async markReadByAdmin(userId: string): Promise<void> {
+    await db.update(privateMessages).set({ readByAdmin: true }).where(and(eq(privateMessages.userId, userId), eq(privateMessages.isFromAdmin, false)));
+  }
+
+  async markReadByUser(userId: string): Promise<void> {
+    await db.update(privateMessages).set({ readByUser: true }).where(and(eq(privateMessages.userId, userId), eq(privateMessages.isFromAdmin, true)));
   }
 }
 
