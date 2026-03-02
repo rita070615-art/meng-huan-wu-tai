@@ -161,6 +161,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (user.banned) {
       return res.status(403).json({ error: "该账号已被封禁，请联系管理员" });
     }
+    if (user.isShill) {
+      return res.status(403).json({ error: "该账号为托管账户，无法登录" });
+    }
 
     req.session.userId = user.id;
     req.session.username = user.username;

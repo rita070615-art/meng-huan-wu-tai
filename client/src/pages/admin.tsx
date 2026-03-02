@@ -739,7 +739,7 @@ function UsersAdmin() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    @{u.username} · {u.role === "admin" ? "管理员" : "普通用户"}
+                    @{u.username} · {u.role === "admin" ? "管理员" : u.isShill ? "托管账户" : "普通用户"}
                   </p>
                   <p className="text-xs text-muted-foreground/60 font-mono select-all mt-0.5">
                     ID: {u.id}
