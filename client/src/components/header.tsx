@@ -188,7 +188,7 @@ export default function Header({ showBack, title }: HeaderProps) {
                       data-testid={`user-pm-msg-${msg.id}`}
                     >
                       {msg.isFromAdmin && (
-                        <p className="text-xs font-semibold opacity-70 mb-0.5">管理员{msg.adminUsername ? ` · ${msg.adminUsername}` : ""}</p>
+                        <p className="text-xs font-semibold opacity-70 mb-0.5">管理员</p>
                       )}
                       <p className="break-words">{msg.content}</p>
                       <p className={`text-xs mt-1 opacity-60 ${!msg.isFromAdmin ? "text-right" : ""}`}>
