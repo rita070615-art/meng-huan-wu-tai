@@ -213,6 +213,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
     { key: "C", label: "C", color: "#10b981" },
   ]);
   const [editingOptions, setEditingOptions] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
 
   const { data: betRound, refetch } = useQuery<BetRoundWithBets | null>({
     queryKey: [`/api/rooms/${roomId}/bet-round`],
@@ -220,11 +221,11 @@ function BetRoundManager({ roomId }: { roomId: string }) {
   });
 
   const startBetMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round`, { options }),
-    onSuccess: () => {
-      refetch();
-      toast({ title: "投注已开启！" });
+    mutationFn: () => {
+      const colored = options.map((o, i) => ({ ...o, color: COLORS[i % COLORS.length] }));
+      return apiRequest("POST", `/api/rooms/${roomId}/bet-round`, { options: colored });
     },
+    onSuccess: () => { refetch(); toast({ title: "投注已开启！" }); },
     onError: (e: Error) => toast({ title: "开启失败", description: e.message, variant: "destructive" }),
   });
 
@@ -242,65 +243,141 @@ function BetRoundManager({ roomId }: { roomId: string }) {
   const closeBetMutation = useMutation({
     mutationFn: (winnerOption: string) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption }),
-    onSuccess: () => {
-      refetch();
-      toast({ title: "投注已结束，奖励已发放！" });
-    },
+    onSuccess: () => { refetch(); toast({ title: "投注已结束，奖励已发放！" }); },
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
   });
 
-  const currentOptions = (betRound?.options as BetOption[]) || options;
+  const COLORS = ["#f97316", "#6366f1", "#10b981", "#ef4444", "#f59e0b", "#3b82f6", "#8b5cf6", "#ec4899"];
 
-  const updateOptionLabel = (key: string, label: string) => {
+  const activeOptions: BetOption[] = editingOptions
+    ? options
+    : betRound
+    ? (betRound.options as BetOption[])
+    : options;
+
+  const generateKey = (label: string) =>
+    label.trim().toUpperCase().replace(/\s+/g, "_").slice(0, 6) + "_" + Date.now().toString(36).slice(-3);
+
+  const updateLabel = (key: string, label: string) =>
     setOptions((prev) => prev.map((o) => (o.key === key ? { ...o, label } : o)));
+
+  const removeOption = (key: string) =>
+    setOptions((prev) => prev.filter((o) => o.key !== key));
+
+  const addOption = () => {
+    const label = newLabel.trim();
+    if (!label) return;
+    const key = generateKey(label);
+    setOptions((prev) => [...prev, { key, label, color: COLORS[prev.length % COLORS.length] }]);
+    setNewLabel("");
   };
 
-  const COLORS = ["#f97316", "#6366f1", "#10b981", "#ef4444", "#f59e0b", "#3b82f6"];
+  const handleEditingToggle = () => {
+    if (!editingOptions) {
+      setOptions((betRound?.options as BetOption[]) || options);
+    }
+    setEditingOptions(!editingOptions);
+  };
+
+  const saveActiveOptions = () => {
+    const colored = options.map((o, i) => ({ ...o, color: COLORS[i % COLORS.length] }));
+    updateOptionsMutation.mutate(colored);
+  };
 
   return (
     <div className="py-3 space-y-3">
       <div className="bg-background border border-border rounded-lg p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">投注选项配置</h4>
-          {betRound && (
+          {betRound && !editingOptions && (
             <button
               data-testid="button-edit-options"
-              onClick={() => setEditingOptions(!editingOptions)}
+              onClick={handleEditingToggle}
               className="text-xs text-primary flex items-center gap-1"
             >
               <Edit2 className="w-3 h-3" />
-              {editingOptions ? "取消" : "编辑选项"}
+              编辑选项
             </button>
           )}
         </div>
 
-        {editingOptions && betRound ? (
+        {(!betRound || editingOptions) ? (
           <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              {betRound ? "修改进行中的投注选项：" : "自定义下注选项（可添加、删除、重命名）："}
+            </p>
+
             {options.map((opt, i) => (
               <div key={opt.key} className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                <div
+                  className="w-6 h-6 rounded-md shrink-0 flex items-center justify-center text-white text-xs font-bold"
+                  style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                >
+                  {String.fromCharCode(65 + i)}
+                </div>
                 <Input
                   data-testid={`input-option-label-${opt.key}`}
                   value={opt.label}
-                  onChange={(e) => updateOptionLabel(opt.key, e.target.value)}
-                  placeholder={`选项 ${opt.key}`}
+                  onChange={(e) => updateLabel(opt.key, e.target.value)}
+                  placeholder="选项名称"
                   className="flex-1 h-8 text-sm"
                 />
+                <button
+                  data-testid={`button-remove-option-${opt.key}`}
+                  onClick={() => removeOption(opt.key)}
+                  disabled={options.length <= 2}
+                  className="text-muted-foreground disabled:opacity-30 transition-opacity shrink-0"
+                  title="删除此选项"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             ))}
-            <Button
-              size="sm"
-              data-testid="button-save-options"
-              onClick={() => updateOptionsMutation.mutate(options.map((o, i) => ({ ...o, color: COLORS[i % COLORS.length] })))}
-              disabled={updateOptionsMutation.isPending}
-            >
-              <Check className="w-3.5 h-3.5 mr-1" />
-              保存选项
-            </Button>
+
+            <div className="flex items-center gap-2 pt-1 border-t border-border">
+              <div className="w-6 h-6 rounded-md shrink-0 flex items-center justify-center bg-muted">
+                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+              </div>
+              <Input
+                data-testid="input-new-option-label"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addOption()}
+                placeholder="输入新选项名称，按 Enter 或点击添加"
+                className="flex-1 h-8 text-sm"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                data-testid="button-add-option"
+                onClick={addOption}
+                disabled={!newLabel.trim()}
+                className="shrink-0 h-8 px-2"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            {betRound ? (
+              <div className="flex gap-2 pt-1">
+                <Button
+                  size="sm"
+                  data-testid="button-save-options"
+                  onClick={saveActiveOptions}
+                  disabled={updateOptionsMutation.isPending || options.length < 2}
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                  保存更改
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleEditingToggle}>
+                  取消
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="flex gap-2 flex-wrap">
-            {(betRound ? currentOptions : options).map((opt, i) => (
+            {activeOptions.map((opt, i) => (
               <div
                 key={opt.key}
                 className="flex items-center gap-1.5 bg-muted rounded-md px-2.5 py-1"
@@ -312,24 +389,6 @@ function BetRoundManager({ roomId }: { roomId: string }) {
             ))}
           </div>
         )}
-
-        {!betRound && (
-          <div className="space-y-2 pt-1">
-            <p className="text-xs text-muted-foreground">开启投注前可自定义选项标签：</p>
-            {options.map((opt, i) => (
-              <div key={opt.key} className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                <Input
-                  data-testid={`input-new-option-${opt.key}`}
-                  value={opt.label}
-                  onChange={(e) => updateOptionLabel(opt.key, e.target.value)}
-                  placeholder={`选项 ${opt.key}`}
-                  className="flex-1 h-8 text-sm"
-                />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {!betRound ? (
@@ -337,17 +396,17 @@ function BetRoundManager({ roomId }: { roomId: string }) {
           size="sm"
           data-testid="button-start-bet"
           onClick={() => startBetMutation.mutate()}
-          disabled={startBetMutation.isPending}
+          disabled={startBetMutation.isPending || options.length < 2}
           className="w-full"
         >
           <Play className="w-3.5 h-3.5 mr-1.5" />
-          {startBetMutation.isPending ? "开启中..." : "开启投注"}
+          {startBetMutation.isPending ? "开启中..." : `开启投注（${options.length} 个选项）`}
         </Button>
       ) : (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground font-medium">选择获胜选项并结束本轮：</p>
           <div className="flex flex-wrap gap-2">
-            {currentOptions.map((opt, i) => (
+            {(betRound.options as BetOption[]).map((opt, i) => (
               <Button
                 key={opt.key}
                 size="sm"
