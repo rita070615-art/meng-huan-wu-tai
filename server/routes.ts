@@ -1,16 +1,351 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import session from "express-session";
 import { storage } from "./storage";
+import { z } from "zod";
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
-  // put application routes here
-  // prefix all routes with /api
+declare module "express-session" {
+  interface SessionData {
+    userId: string;
+    username: string;
+    role: string;
+  }
+}
 
-  // use storage to perform CRUD operations on the storage interface
-  // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
+type WsClient = {
+  ws: WebSocket;
+  userId: string;
+  username: string;
+  roomId: string;
+};
+
+const wsClients: WsClient[] = [];
+
+function broadcast(roomId: string, data: object) {
+  const msg = JSON.stringify(data);
+  wsClients.forEach((c) => {
+    if (c.roomId === roomId && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(msg);
+    }
+  });
+}
+
+function broadcastAll(data: object) {
+  const msg = JSON.stringify(data);
+  wsClients.forEach((c) => {
+    if (c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(msg);
+    }
+  });
+}
+
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  app.use(
+    session({
+      secret: process.env.SESSION_SECRET || "gaming-chat-secret",
+      resave: false,
+      saveUninitialized: false,
+      cookie: { secure: false, maxAge: 7 * 24 * 60 * 60 * 1000 },
+    })
+  );
+
+  const requireAuth = (req: Request, res: Response, next: Function) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+    next();
+  };
+
+  const requireAdmin = (req: Request, res: Response, next: Function) => {
+    if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (req.session.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    next();
+  };
+
+  // AUTH
+  app.post("/api/auth/register", async (req, res) => {
+    const schema = z.object({ username: z.string().min(3).max(20), password: z.string().min(4) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const existing = await storage.getUserByUsername(parsed.data.username);
+    if (existing) return res.status(400).json({ error: "用户名已存在" });
+
+    const user = await storage.createUser(parsed.data);
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    req.session.role = user.role;
+    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    const schema = z.object({ username: z.string(), password: z.string() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const user = await storage.getUserByUsername(parsed.data.username);
+    if (!user || user.password !== parsed.data.password) {
+      return res.status(401).json({ error: "用户名或密码错误" });
+    }
+
+    req.session.userId = user.id;
+    req.session.username = user.username;
+    req.session.role = user.role;
+    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => res.json({ ok: true }));
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) return res.json(null);
+    const user = await storage.getUser(req.session.userId);
+    if (!user) return res.json(null);
+    res.json({ id: user.id, username: user.username, balance: user.balance, role: user.role });
+  });
+
+  // ROOMS
+  app.get("/api/rooms", requireAuth, async (req, res) => {
+    const roomList = await storage.getRooms();
+    const enriched = await Promise.all(
+      roomList.map(async (room) => {
+        const round = await storage.getActiveBetRound(room.id);
+        return { ...room, hasActiveBet: !!round };
+      })
+    );
+    res.json(enriched);
+  });
+
+  app.get("/api/rooms/:id", requireAuth, async (req, res) => {
+    const room = await storage.getRoom(req.params.id);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    res.json(room);
+  });
+
+  app.post("/api/rooms", requireAdmin, async (req, res) => {
+    const schema = z.object({ name: z.string().min(1), description: z.string().default("") });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const room = await storage.createRoom({ ...parsed.data, createdBy: req.session.userId! });
+    await storage.createMessage({ roomId: room.id, content: `欢迎来到 ${room.name}！`, type: "system" });
+    await storage.createMessage({ roomId: room.id, content: "开始下注吧！", type: "system" });
+    broadcastAll({ type: "ROOM_CREATED", room });
+    res.json(room);
+  });
+
+  app.patch("/api/rooms/:id", requireAdmin, async (req, res) => {
+    const schema = z.object({
+      name: z.string().min(1).optional(),
+      description: z.string().optional(),
+      isActive: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const room = await storage.updateRoom(req.params.id, parsed.data);
+    if (!room) return res.status(404).json({ error: "Room not found" });
+    broadcastAll({ type: "ROOM_UPDATED", room });
+    res.json(room);
+  });
+
+  app.delete("/api/rooms/:id", requireAdmin, async (req, res) => {
+    await storage.deleteRoom(req.params.id);
+    broadcastAll({ type: "ROOM_DELETED", roomId: req.params.id });
+    res.json({ ok: true });
+  });
+
+  // MESSAGES
+  app.get("/api/rooms/:id/messages", requireAuth, async (req, res) => {
+    const msgs = await storage.getMessages(req.params.id, 100);
+    res.json(msgs);
+  });
+
+  app.post("/api/rooms/:id/messages", requireAuth, async (req, res) => {
+    const schema = z.object({ content: z.string().min(1).max(500) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      userId: req.session.userId,
+      username: req.session.username,
+      content: parsed.data.content,
+      type: "user",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: msg });
+    res.json(msg);
+  });
+
+  // BET ROUNDS
+  app.get("/api/rooms/:id/bet-round", requireAuth, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.json(null);
+    const betsForRound = await storage.getBetsForRound(round.id);
+    res.json({ ...round, bets: betsForRound });
+  });
+
+  app.post("/api/rooms/:id/bet-round", requireAdmin, async (req, res) => {
+    const existing = await storage.getActiveBetRound(req.params.id);
+    if (existing) return res.status(400).json({ error: "已有进行中的投注轮" });
+
+    const defaultOptions = [
+      { key: "A", label: "A", color: "#f97316" },
+      { key: "B", label: "B", color: "#6366f1" },
+      { key: "C", label: "C", color: "#10b981" },
+    ];
+
+    const options = req.body.options || defaultOptions;
+    const round = await storage.createBetRound({ roomId: req.params.id, options });
+
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      content: "🎯 投注已开始！请选择您的选项进行下注。",
+      type: "system",
+    });
+    broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
+    res.json(round);
+  });
+
+  app.patch("/api/rooms/:id/bet-round/options", requireAdmin, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(404).json({ error: "No active round" });
+
+    const updated = await storage.updateBetRoundOptions(round.id, req.body.options);
+    broadcast(req.params.id, { type: "BET_OPTIONS_UPDATED", round: updated });
+    res.json(updated);
+  });
+
+  app.post("/api/rooms/:id/bet-round/close", requireAdmin, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(404).json({ error: "No active round" });
+
+    const schema = z.object({ winnerOption: z.string() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid winner" });
+
+    const closed = await storage.closeBetRound(round.id, parsed.data.winnerOption);
+    const roundBets = await storage.getBetsForRound(round.id);
+
+    const winners = roundBets.filter((b) => b.option === parsed.data.winnerOption);
+    const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
+    const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
+
+    for (const bet of winners) {
+      const user = await storage.getUser(bet.userId);
+      if (user) {
+        const payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool * 0.9) : 0;
+        await storage.updateUserBalance(bet.userId, user.balance + payout);
+      }
+    }
+
+    const options = round.options as Array<{ key: string; label: string }>;
+    const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      content: `🏆 投注结束！获胜选项：${winnerOpt?.label || parsed.data.winnerOption}。奖池共 ${totalPool} 金币，已分配给胜者。`,
+      type: "system",
+    });
+
+    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: parsed.data.winnerOption, message: msg });
+    res.json(closed);
+  });
+
+  // BETS
+  app.post("/api/rooms/:id/bets", requireAuth, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(400).json({ error: "当前没有开放的投注" });
+
+    const schema = z.object({ option: z.string(), amount: z.number().int().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const existing = await storage.getUserBetInRound(req.session.userId!, round.id);
+    if (existing) return res.status(400).json({ error: "您在本轮已下注" });
+
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || user.balance < parsed.data.amount) {
+      return res.status(400).json({ error: "余额不足" });
+    }
+
+    await storage.updateUserBalance(user.id, user.balance - parsed.data.amount);
+
+    const bet = await storage.placeBet({
+      roundId: round.id,
+      roomId: req.params.id,
+      userId: req.session.userId!,
+      username: req.session.username!,
+      option: parsed.data.option,
+      amount: parsed.data.amount,
+    });
+
+    broadcast(req.params.id, { type: "NEW_BET", bet });
+    res.json(bet);
+  });
+
+  app.get("/api/rooms/:id/bets", requireAuth, async (req, res) => {
+    const betsForRoom = await storage.getBetsForRoom(req.params.id);
+    res.json(betsForRoom);
+  });
+
+  // ADMIN
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    const allUsers = await storage.getAllUsers();
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, balance: u.balance, role: u.role })));
+  });
+
+  app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
+    const schema = z.object({ balance: z.number().int().min(0) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid balance" });
+
+    const user = await storage.updateUserBalance(req.params.id, parsed.data.balance);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json({ id: user.id, username: user.username, balance: user.balance });
+  });
+
+  // WEBSOCKET
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
+
+  wss.on("connection", (ws, req) => {
+    const url = new URL(req.url || "", `http://localhost`);
+    const roomId = url.searchParams.get("roomId") || "";
+    const userId = url.searchParams.get("userId") || "";
+    const username = url.searchParams.get("username") || "";
+
+    const client: WsClient = { ws, userId, username, roomId };
+    wsClients.push(client);
+
+    ws.on("close", () => {
+      const idx = wsClients.indexOf(client);
+      if (idx !== -1) wsClients.splice(idx, 1);
+    });
+  });
+
+  // SEED
+  await seedData();
 
   return httpServer;
+}
+
+async function seedData() {
+  try {
+    const admin = await storage.getUserByUsername("admin");
+    if (admin) return;
+
+    const adminUser = await storage.createUser({ username: "admin", password: "admin123", role: "admin", balance: 99999 } as any);
+    await storage.createUser({ username: "player1", password: "pass1234", role: "user", balance: 2000 } as any);
+    await storage.createUser({ username: "player2", password: "pass1234", role: "user", balance: 1500 } as any);
+
+    const room1 = await storage.createRoom({ name: "百家乐大厅", description: "经典百家乐，押注庄闲", createdBy: adminUser.id });
+    const room2 = await storage.createRoom({ name: "竞技预测厅", description: "预测比赛结果，赢取丰厚奖励", createdBy: adminUser.id });
+    const room3 = await storage.createRoom({ name: "幸运色子间", description: "猜猜骰子点数，运气决定一切", createdBy: adminUser.id });
+
+    await storage.createMessage({ roomId: room1.id, content: "欢迎来到百家乐大厅！", type: "system" });
+    await storage.createMessage({ roomId: room1.id, content: "请理性投注，享受游戏乐趣。", type: "system" });
+    await storage.createMessage({ roomId: room2.id, content: "欢迎来到竞技预测厅！", type: "system" });
+    await storage.createMessage({ roomId: room3.id, content: "欢迎来到幸运色子间！", type: "system" });
+  } catch (e) {
+    console.error("Seed error:", e);
+  }
 }
