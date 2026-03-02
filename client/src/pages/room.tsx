@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy } from "lucide-react";
+import { Send, Coins, TrendingUp, Lock, Trophy, MessageSquare } from "lucide-react";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
 type BetRoundWithBets = BetRound & { bets: Bet[]; options: BetOption[] };
@@ -21,6 +21,7 @@ export default function RoomPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  const [mobileTab, setMobileTab] = useState<"chat" | "bet">("chat");
   const [messageText, setMessageText] = useState("");
   const [betAmount, setBetAmount] = useState("100");
   const [selectedOption, setSelectedOption] = useState<string>("");
@@ -159,7 +160,7 @@ export default function RoomPage() {
       <Header showBack title={room?.name} />
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+        <div className={`flex-1 flex flex-col min-w-0 border-r border-border ${mobileTab === "bet" ? "hidden md:flex" : "flex"}`}>
           <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-messages">
             {msgsLoading ? (
               <div className="space-y-3">
@@ -193,7 +194,7 @@ export default function RoomPage() {
           </form>
         </div>
 
-        <div className="w-80 flex-shrink-0 flex flex-col overflow-hidden bg-card/30">
+        <div className={`md:w-80 flex-shrink-0 flex-col overflow-hidden bg-card/30 ${mobileTab === "chat" ? "hidden md:flex" : "flex flex-1 md:flex-none"}`}>
           <div className="p-4 border-b border-border">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-6 h-6 rounded-md bg-primary/20 flex items-center justify-center">
@@ -347,6 +348,32 @@ export default function RoomPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="md:hidden flex border-t border-border bg-background shrink-0">
+        <button
+          data-testid="mobile-tab-chat"
+          onClick={() => setMobileTab("chat")}
+          className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs font-medium transition-colors ${
+            mobileTab === "chat" ? "text-primary" : "text-muted-foreground"
+          }`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          聊天
+        </button>
+        <button
+          data-testid="mobile-tab-bet"
+          onClick={() => setMobileTab("bet")}
+          className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-xs font-medium transition-colors relative ${
+            mobileTab === "bet" ? "text-primary" : "text-muted-foreground"
+          }`}
+        >
+          <TrendingUp className="w-5 h-5" />
+          下注
+          {currentRound && (
+            <span className="absolute top-1.5 right-[calc(50%-16px)] w-2 h-2 rounded-full bg-primary animate-pulse" />
+          )}
+        </button>
       </div>
     </div>
   );

@@ -41,7 +41,9 @@ export default function Header({ showBack, title }: HeaderProps) {
             <span className="font-bold text-base hidden sm:block">Dream Stage</span>
           </button>
           {title && (
-            <span className="text-muted-foreground text-sm truncate hidden sm:block">/ {title}</span>
+            <span className="text-foreground text-sm font-medium truncate max-w-[120px] sm:max-w-none sm:text-muted-foreground">
+              <span className="hidden sm:inline">/ </span>{title}
+            </span>
           )}
         </div>
 

@@ -35,12 +35,12 @@ export default function AdminPage() {
       <Header title="管理后台" showBack />
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
         <Tabs defaultValue="rooms">
-          <TabsList className="mb-6">
-            <TabsTrigger value="rooms" data-testid="tab-rooms">
+          <TabsList className="mb-6 w-full sm:w-auto">
+            <TabsTrigger value="rooms" data-testid="tab-rooms" className="flex-1 sm:flex-none">
               <MessageSquare className="w-4 h-4 mr-1.5" />
               游戏厅管理
             </TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">
+            <TabsTrigger value="users" data-testid="tab-users" className="flex-1 sm:flex-none">
               <Users className="w-4 h-4 mr-1.5" />
               用户管理
             </TabsTrigger>
