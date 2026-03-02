@@ -38,7 +38,7 @@ export default function AdminPage() {
           <TabsList className="mb-6 w-full sm:w-auto">
             <TabsTrigger value="rooms" data-testid="tab-rooms" className="flex-1 sm:flex-none">
               <MessageSquare className="w-4 h-4 mr-1.5" />
-              游戏厅管理
+              聊天室管理
             </TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users" className="flex-1 sm:flex-none">
               <Users className="w-4 h-4 mr-1.5" />
@@ -83,7 +83,7 @@ function RoomsAdmin() {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       setNewName("");
       setNewDesc("");
-      toast({ title: "游戏厅创建成功！" });
+      toast({ title: "聊天室创建成功！" });
     },
     onError: (e: Error) => toast({ title: "创建失败", description: e.message, variant: "destructive" }),
   });
@@ -92,7 +92,7 @@ function RoomsAdmin() {
     mutationFn: (id: string) => apiRequest("DELETE", `/api/rooms/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-      toast({ title: "游戏厅已删除" });
+      toast({ title: "聊天室已删除" });
     },
     onError: (e: Error) => toast({ title: "删除失败", description: e.message, variant: "destructive" }),
   });
@@ -108,7 +108,7 @@ function RoomsAdmin() {
       <div className="bg-card border border-card-border rounded-lg p-5">
         <h2 className="font-semibold mb-4 flex items-center gap-2">
           <Plus className="w-4 h-4" />
-          创建游戏厅
+          创建聊天室
         </h2>
         <form onSubmit={handleCreate} className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
@@ -140,7 +140,7 @@ function RoomsAdmin() {
             size="sm"
           >
             <Plus className="w-4 h-4 mr-1.5" />
-            {createRoomMutation.isPending ? "创建中..." : "创建游戏厅"}
+            {createRoomMutation.isPending ? "创建中..." : "创建聊天室"}
           </Button>
         </form>
       </div>
@@ -148,7 +148,7 @@ function RoomsAdmin() {
       <div>
         <h2 className="font-semibold mb-3 flex items-center gap-2">
           <Settings className="w-4 h-4" />
-          游戏厅列表
+          聊天室列表
         </h2>
         {isLoading ? (
           <div className="space-y-2">
@@ -204,7 +204,7 @@ function RoomsAdmin() {
           </div>
         ) : (
           <div className="bg-card border border-card-border rounded-lg p-8 text-center text-muted-foreground text-sm">
-            暂无游戏厅，请先创建
+            暂无聊天室，请先创建
           </div>
         )}
       </div>

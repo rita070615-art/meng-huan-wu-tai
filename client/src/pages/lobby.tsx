@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/header";
-import { Users, Gamepad2, ChevronRight, LogOut, Shield } from "lucide-react";
+import { Users, MessageSquare, ChevronRight, LogOut, Shield } from "lucide-react";
 
 type Room = {
   id: string;
@@ -43,8 +43,8 @@ export default function LobbyPage() {
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">游戏大厅</h1>
-            <p className="text-muted-foreground text-sm mt-1">选择一个游戏厅加入</p>
+            <h1 className="text-2xl font-bold">聊天大厅</h1>
+            <p className="text-muted-foreground text-sm mt-1">选择一个聊天室加入</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             {isAdmin && (
@@ -89,7 +89,7 @@ export default function LobbyPage() {
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-                      <Gamepad2 className="w-5 h-5 text-primary" />
+                      <MessageSquare className="w-5 h-5 text-primary" />
                     </div>
                     <div>
                       <h2 className="font-semibold text-base leading-tight">{room.name}</h2>
@@ -109,8 +109,8 @@ export default function LobbyPage() {
                     </Badge>
                   )}
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    游戏厅
+                    <MessageSquare className="w-3 h-3" />
+                    聊天室
                   </span>
                 </div>
               </button>
@@ -118,9 +118,9 @@ export default function LobbyPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Gamepad2 className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-            <p className="text-lg font-medium text-muted-foreground">暂无游戏厅</p>
-            <p className="text-sm text-muted-foreground mt-1">请等待管理员创建游戏厅</p>
+            <MessageSquare className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
+            <p className="text-lg font-medium text-muted-foreground">暂无聊天室</p>
+            <p className="text-sm text-muted-foreground mt-1">请等待管理员创建聊天室</p>
           </div>
         )}
       </main>

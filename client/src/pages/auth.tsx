@@ -62,7 +62,7 @@ export default function AuthPage() {
             <span className="text-2xl font-bold tracking-tight -mt-2">梦幻舞台</span>
           </div>
           <p className="text-muted-foreground text-sm">
-            {isLogin ? "登录您的账户，开始游戏" : "创建账户，加入游戏大厅"}
+            {isLogin ? "登录您的账户，开始聊天" : "创建账户，加入聊天大厅"}
           </p>
         </div>
 
