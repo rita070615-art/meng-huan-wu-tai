@@ -94,7 +94,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const requireAuth = (req: Request, res: Response, next: Function) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
-    if (req.session.role !== "admin" && !req.session.totpVerified) {
+    if (!req.session.totpVerified) {
       return res.status(403).json({ error: "TOTP_REQUIRED" });
     }
     next();
@@ -103,6 +103,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const requireAdmin = (req: Request, res: Response, next: Function) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
     if (req.session.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    if (!req.session.totpVerified) return res.status(403).json({ error: "TOTP_REQUIRED" });
     next();
   };
 
@@ -169,7 +170,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    req.session.totpVerified = user.role === "admin" ? true : false;
+    req.session.totpVerified = !user.totpEnabled;
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "登录失败，请重试" });
       res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: user.totpEnabled, totpVerified: req.session.totpVerified });

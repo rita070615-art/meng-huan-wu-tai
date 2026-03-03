@@ -24,7 +24,7 @@ type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
 export default function AdminPage() {
-  const { isAdmin, isLoading, user: currentUser } = useAuth();
+  const { isAdmin, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -595,6 +595,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
 }
 
 function UsersAdmin() {
+  const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const [editingBalance, setEditingBalance] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState("");

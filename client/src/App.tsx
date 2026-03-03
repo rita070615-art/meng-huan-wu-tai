@@ -190,10 +190,8 @@ function ProtectedRoute({ component: Component, adminOnly }: { component: React.
   if (!user) return <Redirect to="/auth" />;
   if (adminOnly && !isAdmin) return <Redirect to="/" />;
 
-  if (user.role !== "admin") {
-    if (!user.totpEnabled) return <Redirect to="/setup-totp" />;
-    if (!user.totpVerified) return <Redirect to="/verify-totp" />;
-  }
+  if (!user.totpEnabled) return <Redirect to="/setup-totp" />;
+  if (!user.totpVerified) return <Redirect to="/verify-totp" />;
 
   return <Component />;
 }
