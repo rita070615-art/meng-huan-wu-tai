@@ -12,6 +12,7 @@ const httpServer = createServer(app);
 
 app.use(helmet({
   contentSecurityPolicy: false,
+  frameguard: false,
 }));
 
 app.use(cors({
