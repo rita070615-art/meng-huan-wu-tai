@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Shield, CheckCircle2, MessageCircle, Send, X } from "lucide-react";
-import logoImg from "@assets/logo_v2.png";
+import logoImg from "@assets/梦幻舞台.png";
 
 type View = "login" | "register" | "forgot";
 

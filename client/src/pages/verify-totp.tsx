@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield } from "lucide-react";
-import logoImg from "@assets/logo_v2.png";
+import logoImg from "@assets/梦幻舞台.png";
 
 export default function VerifyTotpPage() {
   const [, setLocation] = useLocation();

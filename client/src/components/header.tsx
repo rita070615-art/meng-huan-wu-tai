@@ -8,7 +8,7 @@ import { Coins, ChevronLeft, Mail, Send, X, UserCircle, LayoutDashboard } from "
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
-import logoImg from "@assets/logo_v2.png";
+import logoImg from "@assets/梦幻舞台.png";
 
 type HeaderProps = {
   showBack?: boolean;
