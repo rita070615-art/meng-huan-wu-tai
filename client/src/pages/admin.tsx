@@ -974,6 +974,38 @@ function UsersAdmin() {
   );
 }
 
+function MigrateSection() {
+  const { toast } = useToast();
+  const [done, setDone] = useState(false);
+  const migrateMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/migrate-data"),
+    onSuccess: () => { setDone(true); toast({ title: "数据迁移成功", description: "线上数据库已同步完成" }); },
+    onError: (e: any) => toast({ title: "迁移失败", description: e.message, variant: "destructive" }),
+  });
+  return (
+    <div className="bg-card border border-card-border rounded-lg p-5">
+      <h2 className="font-semibold mb-3 flex items-center gap-2 text-amber-400">
+        <Settings className="w-4 h-4" />
+        数据库同步（首次使用时运行一次）
+      </h2>
+      <p className="text-xs text-muted-foreground mb-4">
+        将开发数据库的用户、房间等数据同步到当前数据库。只需运行一次，之后可忽略。
+      </p>
+      <Button
+        data-testid="button-migrate-data"
+        size="sm"
+        variant="outline"
+        onClick={() => migrateMutation.mutate()}
+        disabled={migrateMutation.isPending || done}
+        className={done ? "border-green-500 text-green-500" : "border-amber-500 text-amber-500 hover:bg-amber-500/10"}
+      >
+        {done ? <Check className="w-3.5 h-3.5 mr-1" /> : <Settings className="w-3.5 h-3.5 mr-1" />}
+        {migrateMutation.isPending ? "同步中..." : done ? "已同步完成" : "一键同步数据库"}
+      </Button>
+    </div>
+  );
+}
+
 function BotAdmin() {
   const { toast } = useToast();
   const [minAmount, setMinAmount] = useState("");
@@ -1164,6 +1196,8 @@ function BotAdmin() {
           </div>
         )}
       </div>
+
+      <MigrateSection />
     </div>
   );
 }

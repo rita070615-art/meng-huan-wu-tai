@@ -19,12 +19,13 @@ app.use(cors({
   credentials: true,
 }));
 
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 60,
-});
-
-app.use(limiter);
+if (process.env.NODE_ENV === "production") {
+  const limiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+  });
+  app.use(limiter);
+}
 
 declare module "http" {
   interface IncomingMessage {

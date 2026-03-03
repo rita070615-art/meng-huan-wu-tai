@@ -841,6 +841,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(pm);
   });
 
+  // One-time data migration: sync dev data to production
+  app.post("/api/admin/migrate-data", requireAdmin, async (req, res) => {
+    try {
+      const { Pool } = await import("pg");
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+      // 1. Remove old seed rooms first (before removing their creator users)
+      await pool.query(`DELETE FROM rooms WHERE name IN ('百家乐大厅','竞技预测厅','幸运色子间','梦幻房间')`);
+
+      // 2. Remove old seed/conflicting users from production by username (different IDs)
+      await pool.query(`
+        DELETE FROM users WHERE username IN ('@DONG798','@aoe166','FlappyBird','QuirkyFawn','QuirkyPrawn','qwe','DONG798','HydroGarnet','Pounce#9','Claw$Hawk','Hitatami','Angrybird')
+          AND id NOT IN ('b3ed8fb0-3f88-4293-ad2f-03a4d0839961','f9325bf2-4ed3-4a9d-9165-aa798c0731bd','e988ef68-7365-4ad3-a364-93e15e781c83','c31b447b-011c-4d0b-87e9-0c02941947bf','9ed0fd5f-4508-47e3-9b58-98a7bbef7c97','33f7c433-e6af-46d8-9639-d768c218b9fe','782153ca-fab1-4f24-8cdb-09d59fbdbf29','02ab2ea3-9c63-48e6-b35e-de6914508eb9','a597b4a0-8147-4517-84bd-ba1a43fd8ff1','a3210b6e-6c62-4118-b0e6-f57f7ff659f0','bb62b18f-8abc-47d0-98b8-c5c738d38d01','8ffe147b-8700-4d1d-b327-f5fe8b9f3cca')
+      `);
+      // Also remove old seed admin accounts with old string IDs (admin/player1/player2)
+      await pool.query(`DELETE FROM users WHERE id IN ('@aoe166', 'DONG798', '8550b3b4-cd6e-445e-a0bf-71795d85549e')`);
+
+      // 3. Upsert users (preserves any new production registrations too)
+      await pool.query(`
+        INSERT INTO users (id, username, password, balance, role, created_at, notes, banned, registration_ip, is_shill, nickname, totp_secret, totp_enabled, muted) VALUES
+          ('b3ed8fb0-3f88-4293-ad2f-03a4d0839961','@DONG798','Thongsheng@02',9900437,'admin','2026-03-02 17:36:26.80687','管理员',false,NULL,false,'阿东（管理）',NULL,false,false),
+          ('f9325bf2-4ed3-4a9d-9165-aa798c0731bd','@aoe166','aoe16666',9999999,'admin','2026-03-02 18:55:50.516149','老总',false,NULL,false,'66总',NULL,false,false),
+          ('e988ef68-7365-4ad3-a364-93e15e781c83','FlappyBird','@NU-7L5n5t65',10245,'user','2026-03-02 17:36:26.811121','托',false,NULL,true,'蓝思嫒',NULL,false,false),
+          ('c31b447b-011c-4d0b-87e9-0c02941947bf','QuirkyFawn','el-G4V17''_#c',11080,'user','2026-03-02 17:36:26.814028','托',false,NULL,true,'战囡',NULL,false,false),
+          ('9ed0fd5f-4508-47e3-9b58-98a7bbef7c97','QuirkyPrawn','i1u[K14''K[Jx',12165,'user','2026-03-02 17:39:46.842436','托',false,NULL,true,'酒初南',NULL,false,false),
+          ('33f7c433-e6af-46d8-9639-d768c218b9fe','qwe','123123',999734,'user','2026-03-02 18:04:11.037404',NULL,false,NULL,false,'骚鸡',NULL,false,false),
+          ('782153ca-fab1-4f24-8cdb-09d59fbdbf29','DONG798','Aaaa1111',9944,'user','2026-03-02 18:43:34.634933',NULL,false,'60.54.15.13',false,'小东','O5VXITD5JZQX2ZTUO5JSCVKWH5XXI3SE',true,false),
+          ('02ab2ea3-9c63-48e6-b35e-de6914508eb9','HydroGarnet','MRV>4Ilu2&8n',12313,'user','2026-03-02 18:44:21.359458',NULL,false,'34.67.233.138',true,'零如冬',NULL,false,false),
+          ('a597b4a0-8147-4517-84bd-ba1a43fd8ff1','Pounce#9','el-G4V17''_#c',20676,'user','2026-03-02 20:40:26.027012','托',false,NULL,true,'星星','KFNVEOLRI5OTKYKAIRWWI533IVBGCQSL',true,false),
+          ('a3210b6e-6c62-4118-b0e6-f57f7ff659f0','Claw$Hawk','el-G4V17''_#c',15000,'user','2026-03-02 20:40:26.031487','托',false,NULL,true,'月亮',NULL,false,false),
+          ('bb62b18f-8abc-47d0-98b8-c5c738d38d01','Hitatami','el-G4V17''_#c',2000,'user','2026-03-02 22:07:27.971925',NULL,false,NULL,false,'地球',NULL,false,false),
+          ('8ffe147b-8700-4d1d-b327-f5fe8b9f3cca','Angrybird','el-G4V17''_#c',1500,'user','2026-03-02 22:07:27.976226',NULL,false,NULL,false,'太阳',NULL,false,false)
+        ON CONFLICT (id) DO UPDATE SET
+          username=EXCLUDED.username, password=EXCLUDED.password, balance=EXCLUDED.balance,
+          role=EXCLUDED.role, notes=EXCLUDED.notes, banned=EXCLUDED.banned,
+          is_shill=EXCLUDED.is_shill, nickname=EXCLUDED.nickname,
+          totp_secret=EXCLUDED.totp_secret, totp_enabled=EXCLUDED.totp_enabled, muted=EXCLUDED.muted
+      `);
+
+      // 4. Insert new rooms (old ones already deleted above)
+      await pool.query(`
+        INSERT INTO rooms (id, name, description, created_by, is_active, created_at, game_url, password, chat_muted) VALUES
+          ('ba0aebef-2c75-44cf-95c0-121e3a09904d','初梦','刚刚踏入梦幻世界，带着一点点光与想象。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:42:15.128034','','',false),
+          ('c6d5a549-e0ce-4c5a-b22d-1dbc86840c2f','幻彩','开始绽放色彩，舞台光效初现，氛围感增强。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:48:12.581803','','',false),
+          ('93a9721e-ef5e-4afc-bdcb-3d42ed815047','星耀','如繁星闪耀，具有吸引目光的亮点与表现力。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:48:21.833709','','',false),
+          ('e110f158-d093-4d80-a24e-bd8691d6b191','璀璨','光芒明显增强，华丽感与视觉冲击力提升。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:48:32.528245','','',false),
+          ('afcf964c-b0f1-4aeb-a0fe-7acb1d2195b2','辉煌','气势宏大，舞台效果震撼，达到高级水准。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:48:39.864804','','',false),
+          ('924f3fd4-fbc9-479b-87eb-0303ee053242','梦境','极致梦幻，宛如神级舞台，震撼全场的最高等级。','b3ed8fb0-3f88-4293-ad2f-03a4d0839961',true,'2026-03-02 18:48:49.181175','','',false)
+        ON CONFLICT (id) DO NOTHING
+      `);
+
+      // Sync bot settings
+      await pool.query(`
+        INSERT INTO bot_settings (id, enabled, min_amount, max_amount) VALUES ('default', true, 100, 500)
+        ON CONFLICT (id) DO UPDATE SET enabled=EXCLUDED.enabled, min_amount=EXCLUDED.min_amount, max_amount=EXCLUDED.max_amount
+      `);
+
+      await pool.end();
+      res.json({ ok: true, message: "数据迁移成功" });
+    } catch (e: any) {
+      console.error("Migration error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://localhost`);
     const roomId = url.searchParams.get("roomId") || "";
