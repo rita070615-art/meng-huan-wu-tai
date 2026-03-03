@@ -69,10 +69,8 @@ export default function ProfilePage() {
               </AvatarFallback>
             </Avatar>
             <div className="space-y-1">
-              <p className="font-semibold text-lg" data-testid="text-profile-username">{user.username}</p>
-              {user.nickname && (
-                <p className="text-sm text-muted-foreground" data-testid="text-profile-nickname">昵称：{user.nickname}</p>
-              )}
+              <p className="font-semibold text-lg" data-testid="text-profile-nickname">{user.nickname || user.username}</p>
+              <p className="text-sm text-muted-foreground" data-testid="text-profile-username">账号：{user.username}</p>
               <div className="flex items-center gap-1.5">
                 <Coins className="w-4 h-4 text-yellow-500" />
                 <span className="text-sm font-medium" data-testid="text-profile-balance">{user.balance.toLocaleString()} 积分</span>
