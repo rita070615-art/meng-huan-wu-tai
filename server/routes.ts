@@ -856,30 +856,5 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
-  // SEED
-  await seedData();
-
   return httpServer;
-}
-
-async function seedData() {
-  try {
-    const admin = await storage.getUserByUsername("admin");
-    if (admin) return;
-
-    const adminUser = await storage.createUser({ username: "admin", password: "admin123", role: "admin", balance: 99999 } as any);
-    await storage.createUser({ username: "player1", password: "pass1234", role: "user", balance: 2000 } as any);
-    await storage.createUser({ username: "player2", password: "pass1234", role: "user", balance: 1500 } as any);
-
-    const room1 = await storage.createRoom({ name: "百家乐大厅", description: "经典百家乐，押注庄闲", createdBy: adminUser.id });
-    const room2 = await storage.createRoom({ name: "竞技预测厅", description: "预测比赛结果，赢取丰厚奖励", createdBy: adminUser.id });
-    const room3 = await storage.createRoom({ name: "幸运色子间", description: "猜猜骰子点数，运气决定一切", createdBy: adminUser.id });
-
-    await storage.createMessage({ roomId: room1.id, content: "欢迎来到百家乐大厅！", type: "system" });
-    await storage.createMessage({ roomId: room1.id, content: "请理性点餐，享受用餐乐趣。", type: "system" });
-    await storage.createMessage({ roomId: room2.id, content: "欢迎来到竞技预测厅！", type: "system" });
-    await storage.createMessage({ roomId: room3.id, content: "欢迎来到幸运色子间！", type: "system" });
-  } catch (e) {
-    console.error("Seed error:", e);
-  }
 }
