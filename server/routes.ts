@@ -744,6 +744,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: user!.id, username: user!.username, muted: user!.muted });
   });
 
+  app.patch("/api/admin/users/:id/role", requireAdmin, async (req, res) => {
+    const schema = z.object({ role: z.enum(["admin", "user"]) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (target.id === req.session.userId) return res.status(400).json({ error: "不能修改自己的权限" });
+
+    const user = await storage.setUserRole(req.params.id, parsed.data.role);
+    res.json({ id: user!.id, username: user!.username, role: user!.role });
+  });
+
   app.patch("/api/admin/users/:id/shill", requireAdmin, async (req, res) => {
     const schema = z.object({ isShill: z.boolean() });
     const parsed = schema.safeParse(req.body);

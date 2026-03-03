@@ -22,6 +22,7 @@ export interface IStorage {
   updateUserNickname(id: string, nickname: string): Promise<User | undefined>;
   banUser(id: string, banned: boolean): Promise<User | undefined>;
   muteUser(id: string, muted: boolean): Promise<User | undefined>;
+  setUserRole(id: string, role: string): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   // Rooms
@@ -269,6 +270,11 @@ export class DbStorage implements IStorage {
 
   async setUserShill(id: string, isShill: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ isShill }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async setUserRole(id: string, role: string): Promise<User | undefined> {
+    const result = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
     return result[0];
   }
 

@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
-  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
+  Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
   Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
@@ -24,7 +24,7 @@ type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
 export default function AdminPage() {
-  const { isAdmin, isLoading } = useAuth();
+  const { isAdmin, isLoading, user: currentUser } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -655,6 +655,16 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role }: { id: string; role: string }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/role`, { role }),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: vars.role === "admin" ? "已升级为管理员" : "已降为普通用户" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
   const updateNicknameMutation = useMutation({
     mutationFn: ({ id, nickname }: { id: string; nickname: string }) =>
       apiRequest("PATCH", `/api/admin/users/${id}/nickname`, { nickname }),
@@ -873,6 +883,21 @@ function UsersAdmin() {
                         className={u.banned ? "" : "hover:border-destructive hover:text-destructive"}
                       >
                         {u.banned ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" /> : <Ban className="w-3.5 h-3.5" />}
+                      </Button>
+                    )}
+                    {u.id !== currentUser?.id && (
+                      <Button
+                        size="sm"
+                        data-testid={`button-role-${u.id}`}
+                        onClick={() => roleMutation.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" })}
+                        disabled={roleMutation.isPending}
+                        title={u.role === "admin" ? "撤销管理员权限" : "升级为管理员"}
+                        className={u.role === "admin"
+                          ? "bg-yellow-500/20 border border-yellow-500 text-yellow-400 hover:bg-yellow-500/30"
+                          : "bg-transparent border border-border text-muted-foreground hover:border-yellow-500/60 hover:text-yellow-400"
+                        }
+                      >
+                        <ShieldPlus className="w-3.5 h-3.5" />
                       </Button>
                     )}
                   </div>
