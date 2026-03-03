@@ -867,7 +867,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ('c31b447b-011c-4d0b-87e9-0c02941947bf','QuirkyFawn','el-G4V17''_#c',11080,'user','2026-03-02 17:36:26.814028','托',false,NULL,true,'战囡',NULL,false,false),
           ('9ed0fd5f-4508-47e3-9b58-98a7bbef7c97','QuirkyPrawn','i1u[K14''K[Jx',12165,'user','2026-03-02 17:39:46.842436','托',false,NULL,true,'酒初南',NULL,false,false),
           ('33f7c433-e6af-46d8-9639-d768c218b9fe','qwe','123123',999734,'user','2026-03-02 18:04:11.037404',NULL,false,NULL,false,'骚鸡',NULL,false,false),
-          ('782153ca-fab1-4f24-8cdb-09d59fbdbf29','DONG798','Aaaa1111',9944,'user','2026-03-02 18:43:34.634933',NULL,false,'60.54.15.13',false,'小东','O5VXITD5JZQX2ZTUO5JSCVKWH5XXI3SE',true,false),
+          ('782153ca-fab1-4f24-8cdb-09d59fbdbf29','DONG798','Aaaa1111',9944,'admin','2026-03-02 18:43:34.634933',NULL,false,'60.54.15.13',false,'小东','O5VXITD5JZQX2ZTUO5JSCVKWH5XXI3SE',true,false),
           ('02ab2ea3-9c63-48e6-b35e-de6914508eb9','HydroGarnet','MRV>4Ilu2&8n',12313,'user','2026-03-02 18:44:21.359458',NULL,false,'34.67.233.138',true,'零如冬',NULL,false,false),
           ('a597b4a0-8147-4517-84bd-ba1a43fd8ff1','Pounce#9','el-G4V17''_#c',20676,'user','2026-03-02 20:40:26.027012','托',false,NULL,true,'星星','KFNVEOLRI5OTKYKAIRWWI533IVBGCQSL',true,false),
           ('a3210b6e-6c62-4118-b0e6-f57f7ff659f0','Claw$Hawk','el-G4V17''_#c',15000,'user','2026-03-02 20:40:26.031487','托',false,NULL,true,'月亮',NULL,false,false),
