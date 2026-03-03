@@ -10,7 +10,9 @@ const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+}));
 
 app.use(cors({
   origin: true,
