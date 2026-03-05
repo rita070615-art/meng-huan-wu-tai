@@ -35,6 +35,8 @@ export default function RoomPage() {
   const [bankerUserId, setBankerUserId] = useState("");
   const [bankerOption, setBankerOption] = useState("");
   const [bankerMaxBet, setBankerMaxBet] = useState("");
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -64,9 +66,15 @@ export default function RoomPage() {
     enabled: !!roomId,
   });
 
-  const { data: adminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; isShill: boolean }>>({
+  const { data: adminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number; isShill: boolean }>>({
     queryKey: ["/api/admin/users"],
     enabled: !!isAdmin,
+  });
+
+  const { data: onlineUsers, refetch: refetchOnlineUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number }>>({
+    queryKey: [`/api/rooms/${roomId}/online-users`],
+    enabled: !!isAdmin && !!roomId,
+    refetchInterval: 20000,
   });
 
   useEffect(() => {
@@ -299,6 +307,35 @@ export default function RoomPage() {
     return acc;
   }, {} as Record<string, number>);
 
+  // Balance map for admins: userId → balance
+  const balanceMap = (adminUsers || []).reduce((acc, u) => {
+    acc[u.id] = u.balance;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // All nicknames/usernames visible in room for @mention autocomplete
+  const mentionableUsers = adminUsers || [];
+
+  const handleMessageInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setMessageText(val);
+    const atIndex = val.lastIndexOf("@");
+    if (atIndex >= 0 && (atIndex === 0 || val[atIndex - 1] === " ")) {
+      setMentionQuery(val.slice(atIndex + 1).toLowerCase());
+    } else {
+      setMentionQuery(null);
+    }
+  };
+
+  const insertMention = (nick: string) => {
+    const val = messageText;
+    const atIndex = val.lastIndexOf("@");
+    const newVal = val.slice(0, atIndex) + "@" + nick + " ";
+    setMessageText(newVal);
+    setMentionQuery(null);
+    messageInputRef.current?.focus();
+  };
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
@@ -367,7 +404,10 @@ export default function RoomPage() {
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div>
-                  <label className="text-xs text-muted-foreground">选主厨</label>
+                  <label className="text-xs text-muted-foreground flex items-center gap-1">
+                    选主厨
+                    <button type="button" onClick={() => refetchOnlineUsers()} className="text-[10px] text-primary hover:underline">刷新</button>
+                  </label>
                   <select
                     data-testid="select-banker-user"
                     value={bankerUserId}
@@ -375,8 +415,8 @@ export default function RoomPage() {
                     className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
                   >
                     <option value="">无主厨</option>
-                    {(adminUsers || []).filter(u => !u.isShill).map(u => (
-                      <option key={u.id} value={u.id}>{u.nickname || u.username}</option>
+                    {(onlineUsers || []).map(u => (
+                      <option key={u.id} value={u.id}>{u.nickname || u.username}（{u.balance.toLocaleString()}）</option>
                     ))}
                   </select>
                 </div>
@@ -415,7 +455,14 @@ export default function RoomPage() {
                 data-testid="button-admin-start-round"
                 disabled={startRoundMutation.isPending}
                 onClick={() => {
-                  const bu = adminUsers?.find(x => x.id === bankerUserId);
+                  const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
+                  if (bankerUserId && bankerMaxBet && bu) {
+                    const cap = Number(bankerMaxBet);
+                    if (bu.balance < cap) {
+                      toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要：${cap.toLocaleString()}`, variant: "destructive" });
+                      return;
+                    }
+                  }
                   startRoundMutation.mutate({
                     bankerUserId: bankerUserId || undefined,
                     bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
@@ -512,7 +559,9 @@ export default function RoomPage() {
                   key={msg.id}
                   msg={msg}
                   currentUserId={user?.id}
+                  currentUserNickname={user?.nickname || user?.username}
                   isAdmin={isAdmin}
+                  balanceMap={isAdmin ? balanceMap : undefined}
                   onDelete={isAdmin ? (id) => deleteMessageMutation.mutate(id) : undefined}
                   onMuteUser={isAdmin ? (id) => muteUserMutation.mutate({ id, muted: true }) : undefined}
                   onBanUser={isAdmin ? (id) => banUserMutation.mutate({ id, banned: true }) : undefined}
@@ -523,26 +572,53 @@ export default function RoomPage() {
           </div>
 
           {/* Chat input (all users) */}
-          <form onSubmit={handleSend} className="p-3 border-t border-border flex gap-2">
-            <Input
-              data-testid="input-message"
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              placeholder={chatMuted && !isAdmin ? "聊天室已禁言" : "输入消息（最多30字）..."}
-              disabled={!isAdmin && chatMuted}
-              maxLength={30}
-              className="flex-1 bg-card border-card-border"
-              autoComplete="off"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              data-testid="button-send"
-              disabled={sendMutation.isPending || !messageText.trim() || (!isAdmin && chatMuted)}
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </form>
+          <div className="border-t border-border relative">
+            {/* @mention dropdown (admin only) */}
+            {isAdmin && mentionQuery !== null && (
+              <div className="absolute bottom-full left-3 right-3 mb-1 bg-card border border-border rounded-md shadow-lg z-20 max-h-40 overflow-y-auto">
+                {mentionableUsers
+                  .filter(u => !u.isShill && ((u.nickname || u.username).toLowerCase().includes(mentionQuery)))
+                  .slice(0, 8)
+                  .map(u => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center justify-between"
+                      onMouseDown={(e) => { e.preventDefault(); insertMention(u.nickname || u.username); }}
+                    >
+                      <span>{u.nickname || u.username}</span>
+                      <span className="text-xs text-muted-foreground">@{u.username}</span>
+                    </button>
+                  ))
+                }
+                {mentionableUsers.filter(u => !u.isShill && ((u.nickname || u.username).toLowerCase().includes(mentionQuery))).length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">无匹配用户</div>
+                )}
+              </div>
+            )}
+            <form onSubmit={handleSend} className="p-3 flex gap-2">
+              <Input
+                ref={messageInputRef}
+                data-testid="input-message"
+                value={messageText}
+                onChange={handleMessageInput}
+                onKeyDown={(e) => { if (e.key === "Escape") setMentionQuery(null); }}
+                placeholder={chatMuted && !isAdmin ? "聊天室已禁言" : isAdmin ? "输入消息，@ 提及用户..." : "输入消息（最多30字）..."}
+                disabled={!isAdmin && chatMuted}
+                maxLength={isAdmin ? 200 : 30}
+                className="flex-1 bg-card border-card-border"
+                autoComplete="off"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                data-testid="button-send"
+                disabled={sendMutation.isPending || !messageText.trim() || (!isAdmin && chatMuted)}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </form>
+          </div>
 
           {/* Non-admin: betting panel in chat when round active */}
           {!isAdmin && currentRound && (
@@ -824,17 +900,44 @@ export default function RoomPage() {
   );
 }
 
+function renderMentionContent(content: string, currentUserNickname?: string) {
+  const parts = content.split(/(@\S+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const mentioned = part.slice(1);
+      const isMe = currentUserNickname && (
+        mentioned.toLowerCase() === currentUserNickname.toLowerCase()
+      );
+      return (
+        <span
+          key={i}
+          className={isMe
+            ? "font-semibold text-amber-500 dark:text-amber-400"
+            : "font-semibold text-primary"}
+        >
+          {part}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 function ChatMessage({
   msg,
   currentUserId,
+  currentUserNickname,
   isAdmin,
+  balanceMap,
   onDelete,
   onMuteUser,
   onBanUser,
 }: {
   msg: Message;
   currentUserId?: string;
+  currentUserNickname?: string;
   isAdmin?: boolean;
+  balanceMap?: Record<string, number>;
   onDelete?: (id: string) => void;
   onMuteUser?: (userId: string) => void;
   onBanUser?: (userId: string) => void;
@@ -843,6 +946,8 @@ function ChatMessage({
   const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
   const isOwn = msg.userId === currentUserId;
+  const hasMention = msg.content.includes("@");
+  const mentionsMe = currentUserNickname && msg.content.toLowerCase().includes(`@${currentUserNickname.toLowerCase()}`);
 
   useEffect(() => {
     if (!showMenu) return;
@@ -869,16 +974,21 @@ function ChatMessage({
     );
   }
 
+  const senderBalance = balanceMap && msg.userId ? balanceMap[msg.userId] : undefined;
+
   return (
     <div className={`group flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
       {!isOwn && (
         <div className="relative">
           <button
-            className="text-xs text-muted-foreground mb-0.5 ml-1 hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground mb-0.5 ml-1 hover:text-foreground transition-colors flex items-center gap-1"
             onClick={() => isAdmin && setShowMenu(v => !v)}
             data-testid={`username-${msg.userId}`}
           >
             {msg.username}
+            {isAdmin && senderBalance !== undefined && (
+              <span className="text-[10px] text-green-500 font-medium">（{senderBalance.toLocaleString()}）</span>
+            )}
             {isAdmin && <span className="ml-0.5 opacity-40">▾</span>}
           </button>
           {showMenu && isAdmin && msg.userId && (
@@ -925,12 +1035,18 @@ function ChatMessage({
         <div
           data-testid={`message-${msg.id}`}
           className={`max-w-xs lg:max-w-sm px-3 py-2 rounded-lg text-sm leading-relaxed ${
-            isOwn
-              ? "bg-primary text-primary-foreground rounded-br-sm"
-              : "bg-card border border-card-border rounded-bl-sm"
+            mentionsMe
+              ? "bg-amber-500/15 border border-amber-500/40 rounded-bl-sm"
+              : isOwn
+                ? hasMention
+                  ? "bg-primary/90 text-primary-foreground border border-primary/50 rounded-br-sm"
+                  : "bg-primary text-primary-foreground rounded-br-sm"
+                : "bg-card border border-card-border rounded-bl-sm"
           }`}
         >
-          {msg.content}
+          {hasMention
+            ? renderMentionContent(msg.content, currentUserNickname)
+            : msg.content}
         </div>
         {isAdmin && !isOwn && (
           <button

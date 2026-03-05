@@ -523,6 +523,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const options = req.body.options || defaultOptions;
     const { bankerUserId, bankerNickname, bankerOption, bankerMaxBet } = req.body;
+
+    // Validate banker has enough balance to cover the cap
+    if (bankerUserId && bankerMaxBet) {
+      const banker = await storage.getUser(bankerUserId);
+      if (!banker || banker.balance < Number(bankerMaxBet)) {
+        const name = banker?.nickname || banker?.username || "该用户";
+        return res.status(400).json({ error: `${name}积分不足（当前：${(banker?.balance || 0).toLocaleString()}，需要：${Number(bankerMaxBet).toLocaleString()}）` });
+      }
+    }
+
     const round = await storage.createBetRound({
       roomId: req.params.id,
       options,
@@ -743,6 +753,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/rooms/:id/bets", requireAuth, async (req, res) => {
     const betsForRoom = await storage.getBetsForRoom(req.params.id);
     res.json(betsForRoom);
+  });
+
+  // Online users in a room (based on WebSocket connections)
+  app.get("/api/rooms/:id/online-users", requireAdmin, async (req, res) => {
+    const online = wsClients.filter(c => c.roomId === req.params.id);
+    const uniqueIds = [...new Set(online.map(c => c.userId))];
+    const users = await Promise.all(uniqueIds.map(id => storage.getUser(id)));
+    const result = users
+      .filter((u): u is NonNullable<typeof u> => !!u && !u.isShill && !u.banned)
+      .map(u => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance }));
+    res.json(result);
   });
 
   // ADMIN
