@@ -637,7 +637,7 @@ export default function RoomPage() {
                         const opt = options.find(o => o.key === bankerOptionKey);
                         return opt ? (
                           <span className="text-[10px] font-semibold px-1 rounded" style={{ color: opt.color, border: `1px solid ${opt.color}` }}>
-                            庄：{opt.label}
+                            {opt.label}
                           </span>
                         ) : null;
                       })()}
