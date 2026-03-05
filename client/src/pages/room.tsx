@@ -554,8 +554,16 @@ export default function RoomPage() {
                     : <span className="font-semibold text-primary">菜单进行中</span>
                   }
                   {bankerName && (
-                    <span className="text-amber-500 font-medium">
-                      主厨{bankerName}<span className="text-muted-foreground text-[10px] ml-0.5">（桩）</span>
+                    <span className="text-amber-500 font-medium flex items-center gap-1">
+                      主厨{bankerName}<span className="text-muted-foreground text-[10px]">（桩）</span>
+                      {bankerOptionKey && (() => {
+                        const opt = options.find(o => o.key === bankerOptionKey);
+                        return opt ? (
+                          <span className="text-[10px] font-semibold px-1 rounded" style={{ color: opt.color, border: `1px solid ${opt.color}` }}>
+                            庄：{opt.label}
+                          </span>
+                        ) : null;
+                      })()}
                     </span>
                   )}
                 </div>
