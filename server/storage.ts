@@ -15,15 +15,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByNickname(nickname: string): Promise<User | undefined>;
-  getUserByIp(ip: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string; nickname?: string }): Promise<User>;
+  createUser(user: InsertUser & { role?: string; balance?: number; nickname?: string }): Promise<User>;
   updateUserBalance(id: string, balance: number): Promise<User | undefined>;
   updateUserNotes(id: string, notes: string): Promise<User | undefined>;
   updateUserNickname(id: string, nickname: string): Promise<User | undefined>;
   banUser(id: string, banned: boolean): Promise<User | undefined>;
   muteUser(id: string, muted: boolean): Promise<User | undefined>;
   setUserRole(id: string, role: string): Promise<User | undefined>;
-  updateUserIp(id: string, ip: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
   // Rooms
@@ -93,15 +91,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async getUserByIp(ip: string): Promise<User | undefined> {
-    if (!ip) return undefined;
-    const result = await db.select().from(users)
-      .where(eq(users.registrationIp, ip))
-      .limit(1);
-    return result[0];
-  }
-
-  async createUser(user: InsertUser & { role?: string; balance?: number; registrationIp?: string; nickname?: string }): Promise<User> {
+  async createUser(user: InsertUser & { role?: string; balance?: number; nickname?: string }): Promise<User> {
     const id = randomUUID();
     const result = await db.insert(users).values({
       id,
@@ -110,7 +100,6 @@ export class DbStorage implements IStorage {
       password: user.password,
       role: user.role || "user",
       balance: user.balance ?? 0,
-      registrationIp: user.registrationIp || "",
     }).returning();
     return result[0];
   }
@@ -138,10 +127,6 @@ export class DbStorage implements IStorage {
   async muteUser(id: string, muted: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ muted }).where(eq(users.id, id)).returning();
     return result[0];
-  }
-
-  async updateUserIp(id: string, ip: string): Promise<void> {
-    await db.update(users).set({ registrationIp: ip }).where(eq(users.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

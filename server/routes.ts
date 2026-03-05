@@ -110,15 +110,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   };
 
-  const getClientIp = (req: Request): string => {
-    const forwarded = req.headers["x-forwarded-for"];
-    if (forwarded) {
-      const ips = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-      return ips.split(",")[0].trim();
-    }
-    return req.socket?.remoteAddress || req.ip || "";
-  };
-
   // AUTH
   app.post("/api/auth/register", async (req, res) => {
     const schema = z.object({
@@ -135,13 +126,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existingNick = await storage.getUserByNickname(parsed.data.nickname);
     if (existingNick) return res.status(400).json({ error: "昵称已被使用，请换一个" });
 
-    const clientIp = getClientIp(req);
-    if (clientIp) {
-      const ipUser = await storage.getUserByIp(clientIp);
-      if (ipUser) return res.status(400).json({ error: "该网络已注册过账号，每个IP只能注册一个账号" });
-    }
-
-    const user = await storage.createUser({ ...parsed.data, registrationIp: clientIp });
+    const user = await storage.createUser({ ...parsed.data });
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
@@ -169,8 +154,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "该账号为托管账户，无法登录" });
     }
 
-    const loginIp = getClientIp(req);
-    if (loginIp) storage.updateUserIp(user.id, loginIp);
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
@@ -796,7 +779,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, muted: u.muted, isShill: u.isShill, registrationIp: u.registrationIp || null })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, muted: u.muted, isShill: u.isShill })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
