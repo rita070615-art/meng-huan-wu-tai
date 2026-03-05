@@ -8,8 +8,7 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Send, Coins, TrendingUp, Lock, Trophy, Trash2, MicOff, Ban, Settings, Play, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
+import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
@@ -295,25 +294,25 @@ export default function RoomPage() {
             <div className="px-3 py-3 border-t border-border/50 bg-primary/3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-xs font-semibold text-primary">开庄设置</span>
-                <span className="text-xs text-muted-foreground">（庄家可选，直接点"开启点餐"可跳过）</span>
+                <span className="text-xs text-muted-foreground">（主厨可选，直接点"开启点餐"可跳过）</span>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div>
-                  <label className="text-xs text-muted-foreground">选庄家</label>
+                  <label className="text-xs text-muted-foreground">选主厨</label>
                   <select
                     data-testid="select-banker-user"
                     value={bankerUserId}
                     onChange={e => setBankerUserId(e.target.value)}
                     className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
                   >
-                    <option value="">无庄家</option>
+                    <option value="">无主厨</option>
                     {(adminUsers || []).filter(u => !u.isShill).map(u => (
                       <option key={u.id} value={u.id}>{u.nickname || u.username}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">庄家属性</label>
+                  <label className="text-xs text-muted-foreground">主厨属性</label>
                   <select
                     data-testid="select-banker-option"
                     value={bankerOption}
@@ -328,7 +327,7 @@ export default function RoomPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-muted-foreground">庄家上限（积分）</label>
+                  <label className="text-xs text-muted-foreground">主厨上限</label>
                   <Input
                     data-testid="input-banker-max-bet"
                     type="number"
@@ -425,7 +424,7 @@ export default function RoomPage() {
 
       <div className="flex overflow-hidden flex-1">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+        <div className="flex-1 flex flex-col min-w-0">
           {chatMuted && !isAdmin && (
             <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
               <MicOff className="w-3.5 h-3.5" />
@@ -479,18 +478,37 @@ export default function RoomPage() {
           {/* Non-admin: betting panel in chat when round active */}
           {!isAdmin && currentRound && (
             <div className="border-t border-border p-3 space-y-2.5 bg-card/40">
-              {bankerName && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground bg-amber-500/10 rounded px-2 py-1">
-                  <span className="text-amber-500 font-semibold">庄：{bankerName}</span>
-                  {bankerOptionKey && options.find(o => o.key === bankerOptionKey) && (
-                    <span style={{ color: options.find(o => o.key === bankerOptionKey)?.color }}>
-                      · {options.find(o => o.key === bankerOptionKey)?.label}
+              {/* 菜单状态 strip (mobile-friendly, always visible) */}
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-primary">菜单进行中</span>
+                  {bankerName && (
+                    <span className="text-amber-500 font-medium">
+                      主厨{bankerName}<span className="text-muted-foreground text-[10px] ml-0.5">（桩）</span>
                     </span>
                   )}
-                  {bankerCap > 0 && <span className="ml-auto">上限 {bankerCap.toLocaleString()}</span>}
+                </div>
+                {totalPool > 0 && (
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    总餐量 <span className="font-semibold text-foreground">{totalPool.toLocaleString()}</span>
+                  </span>
+                )}
+              </div>
+              {/* Option distribution bar */}
+              {totalPool > 0 && options.length > 0 && (
+                <div className="flex gap-1 h-1.5 rounded-full overflow-hidden">
+                  {options.map(opt => {
+                    const pct = Math.round(((optionTotals[opt.key] || 0) / totalPool) * 100);
+                    return pct > 0 ? <div key={opt.key} style={{ width: `${pct}%`, backgroundColor: opt.color }} title={`${opt.label} ${pct}%`} /> : null;
+                  })}
                 </div>
               )}
-              {pendingBet ? (
+              {/* Banker is exempt */}
+              {user?.id === (currentRound as any)?.bankerUserId ? (
+                <div className="text-center text-xs text-amber-500 py-2 font-medium">
+                  您是本轮主厨（桩），无需下注
+                </div>
+              ) : pendingBet ? (
                 <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-3 space-y-2">
                   <p className="text-sm font-medium text-center">确认您的点餐？</p>
                   <div className="flex items-center justify-center gap-3 text-sm">
@@ -500,7 +518,7 @@ export default function RoomPage() {
                     <span className="text-muted-foreground">·</span>
                     <span className="flex items-center gap-1">
                       <Coins className="w-3.5 h-3.5 text-yellow-500" />
-                      <span className="font-semibold">{pendingBet.amount.toLocaleString()} 分</span>
+                      <span className="font-semibold">{pendingBet.amount.toLocaleString()}</span>
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -555,7 +573,7 @@ export default function RoomPage() {
                           }`}
                         >
                           {alreadyBet && !isBankerOpt && <span className="absolute top-0.5 right-0.5 text-green-500 text-xs">✓</span>}
-                          {isBankerOpt && <span className="absolute top-0.5 right-0.5 text-amber-500 text-xs">庄</span>}
+                          {isBankerOpt && <span className="absolute top-0.5 right-0.5 text-amber-500 text-xs">桩</span>}
                           <span className="text-base font-bold" style={{ color: opt.color }}>{opt.label}</span>
                           <span className="text-xs text-muted-foreground mt-0.5">{pct}%</span>
                         </button>
@@ -602,127 +620,6 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Right sidebar: live bets (desktop only) */}
-        <div className="hidden md:flex md:w-72 flex-shrink-0 flex-col overflow-hidden bg-card/30">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-sm">菜单状态</h3>
-            </div>
-            {currentRound ? (
-              <Badge variant="default" className="text-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
-                进行中
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="text-xs">
-                <Lock className="w-2.5 h-2.5 mr-1" />
-                未开放
-              </Badge>
-            )}
-          </div>
-
-          {currentRound && bankerName && (
-            <div className="px-4 py-2 border-b border-border bg-amber-500/5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
-                  <Trophy className="w-3 h-3" /> 庄家
-                </span>
-                <span className="font-medium text-foreground">{bankerName}</span>
-              </div>
-              {bankerOptionKey && options.find(o => o.key === bankerOptionKey) && (
-                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-                  <span>庄家属性</span>
-                  <span style={{ color: options.find(o => o.key === bankerOptionKey)?.color }} className="font-semibold">
-                    {options.find(o => o.key === bankerOptionKey)?.label}
-                  </span>
-                </div>
-              )}
-              {bankerCap > 0 && (
-                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-                  <span>庄家上限</span>
-                  <span className="font-medium">{bankerCap.toLocaleString()} 分</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {currentRound && totalPool > 0 && (
-            <div className="px-4 py-2 border-b border-border">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>总奖池</span>
-                <span className="font-semibold flex items-center gap-1">
-                  <Coins className="w-3 h-3 text-yellow-500" />
-                  {totalPool.toLocaleString()}
-                </span>
-              </div>
-              {options.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {options.map(opt => {
-                    const total = optionTotals[opt.key] || 0;
-                    const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
-                    return (
-                      <div key={opt.key} className="flex items-center gap-2 text-xs">
-                        <span className="w-12 font-medium truncate" style={{ color: opt.color }}>{opt.label}</span>
-                        <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: opt.color }} />
-                        </div>
-                        <span className="text-muted-foreground w-8 text-right">{pct}%</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="px-4 py-2 border-b border-border">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Trophy className="w-3.5 h-3.5" />
-                实时点餐记录
-              </h4>
-            </div>
-            <div className="flex-1 overflow-y-auto" data-testid="live-action-feed">
-              {displayBets.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground text-xs">暂无点餐记录</div>
-              ) : (
-                displayBets.map((bet) => {
-                  const opt = options.find((o) => o.key === bet.option);
-                  const COLOR_MAP: Record<string, string> = { A: "#f97316", B: "#6366f1", C: "#10b981" };
-                  const color = opt?.color || COLOR_MAP[bet.option] || "#6366f1";
-                  return (
-                    <div
-                      key={bet.id}
-                      data-testid={`bet-item-${bet.id}`}
-                      className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50"
-                    >
-                      <div
-                        className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                        style={{ backgroundColor: color }}
-                      >
-                        {opt?.label?.[0] || bet.option}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{bet.nickname || "匿名用户"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(bet.createdAt).toLocaleTimeString("zh-CN", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                      <span className="text-sm font-semibold flex items-center gap-1 shrink-0">
-                        <Coins className="w-3.5 h-3.5 text-yellow-500" />
-                        {bet.amount.toLocaleString()}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -760,9 +657,8 @@ function ChatMessage({
   if (isSystem) {
     const lines = msg.content.split("\n");
     return (
-      <div className="flex flex-col items-start">
-        <span className="text-xs text-muted-foreground mb-0.5 ml-1">系统</span>
-        <div className="bg-muted/70 border border-border/50 px-3 py-2 rounded-lg rounded-bl-sm text-sm text-foreground max-w-xs lg:max-w-sm">
+      <div className="flex justify-center my-1">
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 px-3 py-1 rounded-full text-xs text-center max-w-xs">
           {lines.map((line, i) => (
             <span key={i}>
               {line}
