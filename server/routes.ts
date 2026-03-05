@@ -44,6 +44,7 @@ type WsClient = {
   username: string;
   roomId: string;
   isAlive: boolean;
+  lastActivity: number;
 };
 
 const wsClients: WsClient[] = [];
@@ -757,7 +758,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Online users in a room (based on WebSocket connections)
   app.get("/api/rooms/:id/online-users", requireAdmin, async (req, res) => {
-    const online = wsClients.filter(c => c.roomId === req.params.id);
+    const ACTIVE_WINDOW = 45 * 1000;
+    const now = Date.now();
+    const online = wsClients.filter(c =>
+      c.roomId === req.params.id &&
+      c.ws.readyState === 1 &&
+      (now - c.lastActivity) < ACTIVE_WINDOW
+    );
     const uniqueIds = [...new Set(online.map(c => c.userId))];
     const users = await Promise.all(uniqueIds.map(id => storage.getUser(id)));
     const result = users
@@ -1072,7 +1079,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // Heartbeat: ping every 20s, terminate dead connections
+  // Heartbeat: ping every 15s, terminate dead connections
   const heartbeat = setInterval(() => {
     wsClients.forEach((c) => {
       if (!c.isAlive) {
@@ -1082,7 +1089,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       c.isAlive = false;
       c.ws.ping();
     });
-  }, 20000);
+  }, 15000);
 
   wss.on("close", () => clearInterval(heartbeat));
 
@@ -1092,10 +1099,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const userId = url.searchParams.get("userId") || "";
     const username = url.searchParams.get("username") || "";
 
-    const client: WsClient = { ws, userId, username, roomId, isAlive: true };
+    const client: WsClient = { ws, userId, username, roomId, isAlive: true, lastActivity: Date.now() };
     wsClients.push(client);
 
-    ws.on("pong", () => { client.isAlive = true; });
+    ws.on("pong", () => { client.isAlive = true; client.lastActivity = Date.now(); });
 
     ws.on("error", () => {
       const idx = wsClients.indexOf(client);
