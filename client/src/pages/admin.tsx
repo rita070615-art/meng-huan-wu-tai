@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean };
+type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean; registrationIp: string | null };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -792,6 +792,9 @@ function UsersAdmin() {
                   </p>
                   <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">
                     编号：#{getSeqNum(u.id)}
+                    {u.registrationIp && (
+                      <span className="ml-2 select-all" title="注册IP">· IP: {u.registrationIp}</span>
+                    )}
                   </p>
                 </div>
 
