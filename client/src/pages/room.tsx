@@ -8,7 +8,8 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
+import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard, TrendingUp, Trophy, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
@@ -701,6 +702,121 @@ export default function RoomPage() {
               )}
             </div>
           )}
+        </div>
+
+        {/* Right sidebar: round status (desktop only) */}
+        <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col overflow-hidden border-l border-border bg-card/30">
+          <div className="p-3 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-sm">菜单状态</h3>
+            </div>
+            {currentRound ? (
+              <Badge variant="default" className="text-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
+                {currentRound.status === "paused" ? "已暂停" : "进行中"}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="text-xs">
+                <Lock className="w-2.5 h-2.5 mr-1" />
+                未开放
+              </Badge>
+            )}
+          </div>
+
+          {currentRound && bankerName && (
+            <div className="px-3 py-2 border-b border-border bg-amber-500/5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                  <Trophy className="w-3 h-3" /> 主厨（桩）
+                </span>
+                <span className="font-medium text-foreground">{bankerName}</span>
+              </div>
+              {bankerOptionKey && options.find(o => o.key === bankerOptionKey) && (
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>主厨选项</span>
+                  <span style={{ color: options.find(o => o.key === bankerOptionKey)?.color }} className="font-semibold">
+                    {options.find(o => o.key === bankerOptionKey)?.label}
+                  </span>
+                </div>
+              )}
+              {bankerCap > 0 && (
+                <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
+                  <span>主厨上限</span>
+                  <span className="font-medium">{bankerCap.toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentRound && totalPool > 0 && (
+            <div className="px-3 py-2 border-b border-border">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                <span>总餐量</span>
+                <span className="font-semibold flex items-center gap-1 text-foreground">
+                  <Coins className="w-3 h-3 text-yellow-500" />
+                  {totalPool.toLocaleString()}
+                </span>
+              </div>
+              {options.length > 0 && (
+                <div className="space-y-1">
+                  {options.map(opt => {
+                    const total = optionTotals[opt.key] || 0;
+                    const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
+                    return (
+                      <div key={opt.key} className="flex items-center gap-2 text-xs">
+                        <span className="w-10 font-medium truncate" style={{ color: opt.color }}>{opt.label}</span>
+                        <div className="flex-1 bg-muted rounded-full h-1.5 overflow-hidden">
+                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: opt.color }} />
+                        </div>
+                        <span className="text-muted-foreground w-8 text-right">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="px-3 py-2 border-b border-border">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Trophy className="w-3 h-3" />
+                实时点餐记录
+              </h4>
+            </div>
+            <div className="flex-1 overflow-y-auto" data-testid="live-action-feed">
+              {liveBets.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground text-xs">暂无点餐记录</div>
+              ) : (
+                liveBets.map((bet) => {
+                  const opt = options.find((o) => o.key === bet.option);
+                  const color = opt?.color || "#6366f1";
+                  return (
+                    <div
+                      key={bet.id}
+                      data-testid={`bet-item-${bet.id}`}
+                      className="flex items-center gap-2 px-3 py-2 border-b border-border/50"
+                    >
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {opt?.label?.[0] || bet.option}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{bet.nickname || bet.username}</p>
+                      </div>
+                      <span className="text-xs font-semibold flex items-center gap-0.5 shrink-0">
+                        <Coins className="w-3 h-3 text-yellow-500" />
+                        {bet.amount.toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
 
       </div>

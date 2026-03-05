@@ -383,7 +383,7 @@ function BetRoundManager({ roomId }: { roomId: string }) {
   const { toast } = useToast();
   const [options, setOptions] = useState<BetOption[]>([
     { key: "A", label: "力量", color: "#ef4444" },
-    { key: "B", label: "体力", color: "#06b6d4" },
+    { key: "B", label: "体力", color: "#22c55e" },
     { key: "C", label: "法力", color: "#a855f7" },
     { key: "D", label: "耐力", color: "#3b82f6" },
   ]);
