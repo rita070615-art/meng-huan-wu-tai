@@ -252,6 +252,7 @@ export default function RoomPage() {
 
       {isAdmin && (
         <div className="border-b border-border bg-primary/5">
+          {/* Admin top bar */}
           <div className="flex items-center gap-2 px-3 py-1.5">
             <ShieldAlert className="w-3.5 h-3.5 text-primary shrink-0" />
             <span className="text-xs font-semibold text-primary">管理控制台</span>
@@ -267,17 +268,19 @@ export default function RoomPage() {
                 <MicOff className="w-3 h-3 mr-1" />
                 {chatMuted ? "解除禁言" : "全体禁言"}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 px-2 text-xs hover:border-amber-500 hover:text-amber-500"
-                data-testid="button-admin-toggle-panel"
-                onClick={() => setAdminPanelOpen(v => !v)}
-              >
-                <Settings className="w-3 h-3 mr-1" />
-                {adminPanelOpen ? "收起" : currentRound ? "点餐设置" : "开庄设置"}
-                {adminPanelOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
-              </Button>
+              {currentRound && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-xs hover:border-amber-500 hover:text-amber-500"
+                  data-testid="button-admin-toggle-panel"
+                  onClick={() => setAdminPanelOpen(v => !v)}
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  {adminPanelOpen ? "收起" : "点餐设置"}
+                  {adminPanelOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                </Button>
+              )}
               <Link href="/admin">
                 <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" data-testid="button-admin-panel-link">
                   <LayoutDashboard className="w-3 h-3 mr-1" />
@@ -286,83 +289,83 @@ export default function RoomPage() {
               </Link>
             </div>
           </div>
-          {isAdmin && adminPanelOpen && (
-            <div className="px-3 pb-3 border-t border-border/50">
-              {!currentRound ? (
-                /* Pre-round: banker setup + start */
-                <div className="pt-2 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground">开庄设置（可选）</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="text-xs text-muted-foreground">选庄家</label>
-                      <select
-                        data-testid="select-banker-user"
-                        value={bankerUserId}
-                        onChange={e => {
-                          const uid = e.target.value;
-                          setBankerUserId(uid);
-                          const u = adminUsers?.find(x => x.id === uid);
-                          if (u) setBankerUserId(uid);
-                        }}
-                        className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
-                      >
-                        <option value="">无庄家</option>
-                        {(adminUsers || []).filter(u => !u.isShill).map(u => (
-                          <option key={u.id} value={u.id}>{u.nickname || u.username}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">庄家属性</label>
-                      <select
-                        data-testid="select-banker-option"
-                        value={bankerOption}
-                        onChange={e => setBankerOption(e.target.value)}
-                        disabled={!bankerUserId}
-                        className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
-                      >
-                        <option value="">选择属性</option>
-                        {[{key:"A",label:"力量"},{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"D",label:"耐力"}].map(o => (
-                          <option key={o.key} value={o.key}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">庄家上限（积分）</label>
-                      <Input
-                        data-testid="input-banker-max-bet"
-                        type="number"
-                        min={1}
-                        value={bankerMaxBet}
-                        onChange={e => setBankerMaxBet(e.target.value)}
-                        disabled={!bankerUserId}
-                        placeholder="如 10000"
-                        className="mt-0.5 h-7 text-xs"
-                      />
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white"
-                    data-testid="button-admin-start-round"
-                    disabled={startRoundMutation.isPending}
-                    onClick={() => {
-                      const bu = adminUsers?.find(x => x.id === bankerUserId);
-                      startRoundMutation.mutate({
-                        bankerUserId: bankerUserId || undefined,
-                        bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
-                        bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
-                        bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
-                      });
-                      setAdminPanelOpen(false);
-                    }}
+
+          {/* Pre-round: banker setup always visible */}
+          {isAdmin && !currentRound && (
+            <div className="px-3 py-3 border-t border-border/50 bg-primary/3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-primary">开庄设置</span>
+                <span className="text-xs text-muted-foreground">（庄家可选，直接点"开启点餐"可跳过）</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <div>
+                  <label className="text-xs text-muted-foreground">选庄家</label>
+                  <select
+                    data-testid="select-banker-user"
+                    value={bankerUserId}
+                    onChange={e => setBankerUserId(e.target.value)}
+                    className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
                   >
-                    <Play className="w-3 h-3 mr-1" />
-                    开启点餐
-                  </Button>
+                    <option value="">无庄家</option>
+                    {(adminUsers || []).filter(u => !u.isShill).map(u => (
+                      <option key={u.id} value={u.id}>{u.nickname || u.username}</option>
+                    ))}
+                  </select>
                 </div>
-              ) : !pendingWinner ? (
-                /* During round: winner selection */
+                <div>
+                  <label className="text-xs text-muted-foreground">庄家属性</label>
+                  <select
+                    data-testid="select-banker-option"
+                    value={bankerOption}
+                    onChange={e => setBankerOption(e.target.value)}
+                    disabled={!bankerUserId}
+                    className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
+                  >
+                    <option value="">选择属性</option>
+                    {[{key:"A",label:"力量"},{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"D",label:"耐力"}].map(o => (
+                      <option key={o.key} value={o.key}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">庄家上限（积分）</label>
+                  <Input
+                    data-testid="input-banker-max-bet"
+                    type="number"
+                    min={1}
+                    value={bankerMaxBet}
+                    onChange={e => setBankerMaxBet(e.target.value)}
+                    disabled={!bankerUserId}
+                    placeholder="如 10000"
+                    className="mt-0.5 h-7 text-xs"
+                  />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white"
+                data-testid="button-admin-start-round"
+                disabled={startRoundMutation.isPending}
+                onClick={() => {
+                  const bu = adminUsers?.find(x => x.id === bankerUserId);
+                  startRoundMutation.mutate({
+                    bankerUserId: bankerUserId || undefined,
+                    bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
+                    bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
+                    bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
+                  });
+                }}
+              >
+                <Play className="w-3 h-3 mr-1" />
+                开启点餐
+              </Button>
+            </div>
+          )}
+
+          {/* During round: winner selection (collapsible) */}
+          {isAdmin && currentRound && adminPanelOpen && (
+            <div className="px-3 pb-3 border-t border-border/50">
+              {!pendingWinner ? (
                 <div className="flex items-center gap-2 flex-wrap pt-2">
                   <span className="text-xs text-muted-foreground">选择获胜选项（第一步）：</span>
                   {(currentRound.options as BetOption[]).map((opt) => (
@@ -380,7 +383,6 @@ export default function RoomPage() {
                   ))}
                 </div>
               ) : (
-                /* Winner confirm */
                 <div className="flex items-center gap-2 flex-wrap pt-2">
                   {(() => {
                     const winOpt = (currentRound.options as BetOption[]).find(o => o.key === pendingWinner);
