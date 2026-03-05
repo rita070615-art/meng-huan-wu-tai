@@ -56,6 +56,7 @@ export interface IStorage {
   getMessages(roomId: string, limit?: number): Promise<Message[]>;
   deleteMessage(id: string): Promise<void>;
   clearMessages(roomId: string): Promise<void>;
+  deleteBetMessages(userId: string, roomId: string): Promise<string[]>;
 
   // Bot Settings
   getBotSettings(): Promise<BotSettings>;
@@ -277,6 +278,14 @@ export class DbStorage implements IStorage {
 
   async clearMessages(roomId: string): Promise<void> {
     await db.delete(messages).where(eq(messages.roomId, roomId));
+  }
+
+  async deleteBetMessages(userId: string, roomId: string): Promise<string[]> {
+    const toDelete = await db.select({ id: messages.id }).from(messages)
+      .where(and(eq(messages.userId, userId), eq(messages.roomId, roomId), eq(messages.type, "bet")));
+    if (toDelete.length === 0) return [];
+    await db.delete(messages).where(and(eq(messages.userId, userId), eq(messages.roomId, roomId), eq(messages.type, "bet")));
+    return toDelete.map(m => m.id);
   }
 
   async getBotSettings(): Promise<BotSettings> {

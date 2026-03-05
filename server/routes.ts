@@ -724,6 +724,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       amount: parsed.data.amount,
     });
 
+    const optLabel = (round.options as Array<{ key: string; label: string }>).find(o => o.key === parsed.data.option)?.label || parsed.data.option;
+    const displayName = user.nickname || user.username;
+    const betMsg = await storage.createMessage({
+      roomId: req.params.id,
+      userId: user.id,
+      username: user.username,
+      content: `${displayName} 点了 ${optLabel} × ${parsed.data.amount.toLocaleString()}`,
+      type: "bet",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: betMsg });
     broadcast(req.params.id, { type: "NEW_BET", bet });
     res.json(bet);
   });
@@ -749,12 +759,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updatedBets = await storage.getBetsForRound(round.id);
     broadcast(req.params.id, { type: "BETS_UPDATED", bets: updatedBets });
 
-    const sysMsg = await storage.createMessage({
-      roomId: req.params.id,
-      content: `${user.nickname || user.username} 取消了点餐`,
-      type: "system",
-    });
-    broadcast(req.params.id, { type: "MESSAGE", message: sysMsg });
+    const deletedIds = await storage.deleteBetMessages(user.id, req.params.id);
+    for (const msgId of deletedIds) {
+      broadcast(req.params.id, { type: "MESSAGE_DELETED", messageId: msgId });
+    }
 
     res.json({ refund });
   });

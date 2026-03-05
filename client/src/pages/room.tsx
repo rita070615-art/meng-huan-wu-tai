@@ -978,6 +978,7 @@ function ChatMessage({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
+  const isBet = msg.type === "bet";
   const isOwn = msg.userId === currentUserId;
   const hasMention = msg.content.includes("@");
   const mentionsMe = currentUserNickname && msg.content.toLowerCase().includes(`@${currentUserNickname.toLowerCase()}`);
@@ -1003,6 +1004,14 @@ function ChatMessage({
             </span>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isBet) {
+    return (
+      <div className="flex items-center gap-1.5 px-3 py-0.5">
+        <span className="text-xs text-muted-foreground/70 leading-snug">{msg.content}</span>
       </div>
     );
   }
