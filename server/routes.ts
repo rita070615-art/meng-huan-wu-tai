@@ -756,6 +756,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(betsForRoom);
   });
 
+  app.delete("/api/rooms/:id/bets", requireAuth, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round || round.status !== "open") {
+      return res.status(400).json({ error: "当前没有进行中的点餐，无法取消" });
+    }
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const refund = await storage.cancelUserBetsInRound(user.id, round.id);
+    if (refund === 0) return res.status(400).json({ error: "您没有可取消的点餐" });
+
+    await storage.updateUserBalance(user.id, user.balance + refund);
+
+    const updatedBets = await storage.getBetsForRound(round.id);
+    broadcast(req.params.id, { type: "BETS_UPDATED", bets: updatedBets });
+
+    const sysMsg = await storage.createMessage({
+      roomId: req.params.id,
+      content: `${user.nickname || user.username} 取消了点餐`,
+      type: "system",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: sysMsg });
+
+    res.json({ refund });
+  });
+
   // Online users in a room (based on WebSocket connections)
   app.get("/api/rooms/:id/online-users", requireAdmin, async (req, res) => {
     const ACTIVE_WINDOW = 45 * 1000;

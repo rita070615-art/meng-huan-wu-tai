@@ -66,7 +66,7 @@ export default function RoomPage() {
     enabled: !!roomId,
   });
 
-  const { data: adminUsers, refetch: refetchAdminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number; isShill: boolean }>>({
+  const { data: adminUsers, refetch: refetchAdminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number; muted: boolean; isShill: boolean }>>({
     queryKey: ["/api/admin/users"],
     enabled: !!isAdmin,
     refetchInterval: 30000,
@@ -121,6 +121,9 @@ export default function RoomPage() {
         }
         if (data.type === "NEW_BET" && data.bet) {
           setLiveBets((prev) => [data.bet, ...prev].slice(0, 50));
+        }
+        if (data.type === "BETS_UPDATED" && data.bets) {
+          setLiveBets(data.bets.slice(0, 50));
         }
         if (data.type === "BET_ROUND_STARTED") {
           setLiveRound({ ...data.round, bets: [] });
@@ -212,6 +215,16 @@ export default function RoomPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
     },
     onError: (e: Error) => toast({ title: "点餐失败", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelBetMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/rooms/${roomId}/bets`),
+    onSuccess: (data: any) => {
+      toast({ title: "已取消点餐", description: `已退还 ${data.refund?.toLocaleString() ?? ""} 积分` });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
+    },
+    onError: (e: Error) => toast({ title: "取消失败", description: e.message, variant: "destructive" }),
   });
 
   const muteChatMutation = useMutation({
@@ -315,6 +328,12 @@ export default function RoomPage() {
     acc[u.id] = u.balance;
     return acc;
   }, {} as Record<string, number>);
+
+  // Muted map for admins: userId → muted status
+  const mutedMap = (adminUsers || []).reduce((acc, u) => {
+    acc[u.id] = u.muted ?? false;
+    return acc;
+  }, {} as Record<string, boolean>);
 
   // All nicknames/usernames visible in room for @mention autocomplete
   const mentionableUsers = adminUsers || [];
@@ -565,8 +584,9 @@ export default function RoomPage() {
                   currentUserNickname={user?.nickname || user?.username}
                   isAdmin={isAdmin}
                   balanceMap={isAdmin ? balanceMap : undefined}
+                  mutedMap={isAdmin ? mutedMap : undefined}
                   onDelete={isAdmin ? (id) => deleteMessageMutation.mutate(id) : undefined}
-                  onMuteUser={isAdmin ? (id) => muteUserMutation.mutate({ id, muted: true }) : undefined}
+                  onMuteUser={isAdmin ? (id, muted) => muteUserMutation.mutate({ id, muted }) : undefined}
                   onBanUser={isAdmin ? (id) => banUserMutation.mutate({ id, banned: true }) : undefined}
                 />
               ))
@@ -694,8 +714,20 @@ export default function RoomPage() {
                   </div>
                 </div>
               ) : !canStillBet ? (
-                <div className="text-center text-xs text-muted-foreground py-2 flex items-center justify-center gap-1.5">
-                  <span className="text-green-500">✓</span> 已完成点餐，等待结果
+                <div className="flex items-center justify-center gap-3 py-1">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span className="text-green-500">✓</span> 已完成点餐，等待结果
+                  </span>
+                  {currentRound.status === "open" && (
+                    <button
+                      data-testid="button-cancel-bet"
+                      onClick={() => cancelBetMutation.mutate()}
+                      disabled={cancelBetMutation.isPending}
+                      className="text-xs text-destructive hover:text-destructive/80 underline underline-offset-2 transition-colors"
+                    >
+                      {cancelBetMutation.isPending ? "取消中..." : "取消点餐"}
+                    </button>
+                  )}
                 </div>
               ) : currentRound.status === "paused" ? (
                 <div className="text-center text-xs text-amber-500 py-2 font-medium">
@@ -920,6 +952,7 @@ function ChatMessage({
   currentUserNickname,
   isAdmin,
   balanceMap,
+  mutedMap,
   onDelete,
   onMuteUser,
   onBanUser,
@@ -929,8 +962,9 @@ function ChatMessage({
   currentUserNickname?: string;
   isAdmin?: boolean;
   balanceMap?: Record<string, number>;
+  mutedMap?: Record<string, boolean>;
   onDelete?: (id: string) => void;
-  onMuteUser?: (userId: string) => void;
+  onMuteUser?: (userId: string, muted: boolean) => void;
   onBanUser?: (userId: string) => void;
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -987,13 +1021,18 @@ function ChatMessage({
               ref={menuRef}
               className="absolute left-0 top-5 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[120px]"
             >
-              <button
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-amber-500"
-                onClick={() => { onMuteUser?.(msg.userId!); setShowMenu(false); }}
-                data-testid={`menu-mute-${msg.userId}`}
-              >
-                <MicOff className="w-3 h-3" /> 禁言
-              </button>
+              {(() => {
+                const isMuted = mutedMap?.[msg.userId!] ?? false;
+                return (
+                  <button
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors ${isMuted ? "text-green-500" : "text-amber-500"}`}
+                    onClick={() => { onMuteUser?.(msg.userId!, !isMuted); setShowMenu(false); }}
+                    data-testid={`menu-mute-${msg.userId}`}
+                  >
+                    <MicOff className="w-3 h-3" /> {isMuted ? "解除禁言" : "禁言"}
+                  </button>
+                );
+              })()}
               <button
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted transition-colors text-destructive"
                 onClick={() => { onBanUser?.(msg.userId!); setShowMenu(false); }}

@@ -47,6 +47,7 @@ export interface IStorage {
   getBetsForRoom(roomId: string): Promise<Bet[]>;
   getUserBetForOption(userId: string, roundId: string, option: string): Promise<Bet | undefined>;
   getUserBetsInRound(userId: string, roundId: string): Promise<Bet[]>;
+  cancelUserBetsInRound(userId: string, roundId: string): Promise<number>;
   getTotalBetsForRound(roundId: string): Promise<number>;
   getAllBetRoundsWithBets(): Promise<Array<BetRound & { bets: Bet[]; roomName: string }>>;
 
@@ -232,6 +233,14 @@ export class DbStorage implements IStorage {
   async getUserBetsInRound(userId: string, roundId: string): Promise<Bet[]> {
     return db.select().from(bets)
       .where(and(eq(bets.userId, userId), eq(bets.roundId, roundId)));
+  }
+
+  async cancelUserBetsInRound(userId: string, roundId: string): Promise<number> {
+    const userBets = await db.select().from(bets)
+      .where(and(eq(bets.userId, userId), eq(bets.roundId, roundId)));
+    const total = userBets.reduce((s, b) => s + b.amount, 0);
+    await db.delete(bets).where(and(eq(bets.userId, userId), eq(bets.roundId, roundId)));
+    return total;
   }
 
   async getTotalBetsForRound(roundId: string): Promise<number> {
