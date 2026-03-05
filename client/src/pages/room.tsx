@@ -232,7 +232,7 @@ export default function RoomPage() {
   const bankerName = banker?.bankerNickname || "";
   const bankerCap = banker?.bankerMaxBet || 0;
   const canStillBet = currentRound
-    ? options.some(opt => !userBetOptions.has(opt.key) && (!bankerOptionKey || opt.key !== bankerOptionKey))
+    ? options.some(opt => !bankerOptionKey || opt.key !== bankerOptionKey)
     : false;
 
   const totalPool = displayBets
@@ -538,22 +538,21 @@ export default function RoomPage() {
                       const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
                       const isBankerOpt = bankerOptionKey === opt.key && user?.id !== (currentRound as any)?.bankerUserId;
                       const alreadyBet = userBetOptions.has(opt.key);
-                      const isDisabled = isBankerOpt || alreadyBet;
                       return (
                         <button
                           key={opt.key}
                           data-testid={`button-bet-option-${opt.key}`}
-                          onClick={() => !isDisabled && setSelectedOption(opt.key)}
-                          disabled={isDisabled}
+                          onClick={() => !isBankerOpt && setSelectedOption(opt.key)}
+                          disabled={isBankerOpt}
                           className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-md border-2 transition-all relative ${
-                            isDisabled
+                            isBankerOpt
                               ? "border-border/40 bg-background/30 opacity-50 cursor-not-allowed"
                               : selectedOption === opt.key
                               ? "border-primary bg-primary/15 cursor-pointer"
                               : "border-border bg-background/60 cursor-pointer"
                           }`}
                         >
-                          {alreadyBet && <span className="absolute top-0.5 right-0.5 text-green-500 text-xs">✓</span>}
+                          {alreadyBet && !isBankerOpt && <span className="absolute top-0.5 right-0.5 text-green-500 text-xs">✓</span>}
                           {isBankerOpt && <span className="absolute top-0.5 right-0.5 text-amber-500 text-xs">庄</span>}
                           <span className="text-base font-bold" style={{ color: opt.color }}>{opt.label}</span>
                           <span className="text-xs text-muted-foreground mt-0.5">{pct}%</span>

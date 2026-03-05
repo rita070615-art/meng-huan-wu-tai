@@ -664,10 +664,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "该选项为庄家属性，闲家不可下注" });
     }
 
-    // Check if user already bet on this specific option
-    const existingForOption = await storage.getUserBetForOption(req.session.userId!, round.id, parsed.data.option);
-    if (existingForOption) return res.status(400).json({ error: "您已对该选项下注，每个选项只能下注一次" });
-
     // Check total bet cap (bankerMaxBet)
     if (round.bankerMaxBet) {
       const totalBets = await storage.getTotalBetsForRound(round.id);
