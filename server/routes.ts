@@ -741,14 +741,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       amount: parsed.data.amount,
     });
 
-    const optLabel = (round.options as Array<{ key: string; label: string }>).find(o => o.key === parsed.data.option)?.label || parsed.data.option;
-    const displayName = user.nickname || user.username;
-    const sysMsg = await storage.createMessage({
-      roomId: req.params.id,
-      content: `${displayName} 点了 ${optLabel} × ${parsed.data.amount.toLocaleString()}`,
-      type: "system",
-    });
-    broadcast(req.params.id, { type: "MESSAGE", message: sysMsg });
     broadcast(req.params.id, { type: "NEW_BET", bet });
     res.json(bet);
   });
