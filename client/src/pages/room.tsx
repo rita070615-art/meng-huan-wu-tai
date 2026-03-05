@@ -1010,8 +1010,11 @@ function ChatMessage({
 
   if (isBet) {
     return (
-      <div className="flex items-center gap-1.5 px-3 py-0.5">
-        <span className="text-xs text-muted-foreground/70 leading-snug">{msg.content}</span>
+      <div className="flex flex-col items-start">
+        <span className="text-xs text-muted-foreground mb-0.5 ml-1">{msg.username}</span>
+        <div className="max-w-[75%] px-3 py-2 rounded-2xl rounded-tl-sm bg-muted/60 border border-border/40 text-sm leading-snug">
+          {msg.content}
+        </div>
       </div>
     );
   }

@@ -580,6 +580,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
               const randomOption = availableOptions[Math.floor(Math.random() * availableOptions.length)].key;
               const shillUser = await storage.getUser(shillId);
+              await storage.updateUserBalance(shillId, shillBalance - amount);
               const bet = await storage.placeBet({
                 roundId,
                 roomId,
@@ -589,6 +590,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 option: randomOption,
                 amount,
               });
+              const shillOptLabel = (activeRound.options as Array<{ key: string; label: string }>).find(o => o.key === randomOption)?.label || randomOption;
+              const shillDisplayName = shillUser?.nickname || shillUsername;
+              const shillBetMsg = await storage.createMessage({
+                roomId,
+                userId: shillId,
+                username: shillDisplayName,
+                content: `点了 ${shillOptLabel} × ${amount.toLocaleString()}`,
+                type: "bet",
+              });
+              broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
               broadcast(roomId, { type: "NEW_BET", bet });
             } catch (e) {
               console.error(`Shill auto-bet error (${shillUsername}):`, e);
@@ -729,8 +740,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const betMsg = await storage.createMessage({
       roomId: req.params.id,
       userId: user.id,
-      username: user.username,
-      content: `${displayName} 点了 ${optLabel} × ${parsed.data.amount.toLocaleString()}`,
+      username: displayName,
+      content: `点了 ${optLabel} × ${parsed.data.amount.toLocaleString()}`,
       type: "bet",
     });
     broadcast(req.params.id, { type: "MESSAGE", message: betMsg });
