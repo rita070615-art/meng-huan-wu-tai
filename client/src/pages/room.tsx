@@ -308,10 +308,6 @@ export default function RoomPage() {
   const bankerOptionKey = banker?.bankerOption || "";
   const bankerName = banker?.bankerNickname || "";
   const bankerCap = banker?.bankerMaxBet || 0;
-  const canStillBet = currentRound
-    ? options.some(opt => !bankerOptionKey || opt.key !== bankerOptionKey)
-    : false;
-
   const totalPool = displayBets
     .filter((b) => currentRound && b.roundId === currentRound.id)
     .reduce((s, b) => s + b.amount, 0);
@@ -713,22 +709,6 @@ export default function RoomPage() {
                     </Button>
                   </div>
                 </div>
-              ) : !canStillBet ? (
-                <div className="flex items-center justify-center gap-3 py-1">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                    <span className="text-green-500">✓</span> 已完成点餐，等待结果
-                  </span>
-                  {currentRound.status === "open" && (
-                    <button
-                      data-testid="button-cancel-bet"
-                      onClick={() => cancelBetMutation.mutate()}
-                      disabled={cancelBetMutation.isPending}
-                      className="text-xs text-destructive hover:text-destructive/80 underline underline-offset-2 transition-colors"
-                    >
-                      {cancelBetMutation.isPending ? "取消中..." : "取消点餐"}
-                    </button>
-                  )}
-                </div>
               ) : currentRound.status === "paused" ? (
                 <div className="text-center text-xs text-amber-500 py-2 font-medium">
                   点餐暂停中，请稍候...
@@ -797,6 +777,34 @@ export default function RoomPage() {
                       </button>
                     ))}
                   </div>
+                  {userBetsInRound.length > 0 && (
+                    <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-green-500 text-xs">✓</span>
+                        <span className="text-xs text-muted-foreground">已点：</span>
+                        {userBetsInRound.map((b, i) => (
+                          <span key={i} className="text-xs flex items-center gap-1">
+                            <span className="font-semibold" style={{ color: options.find(o => o.key === b.option)?.color }}>
+                              {options.find(o => o.key === b.option)?.label}
+                            </span>
+                            <span className="text-muted-foreground">×</span>
+                            <span className="font-medium">{b.amount.toLocaleString()}</span>
+                            {i < userBetsInRound.length - 1 && <span className="text-muted-foreground/50">·</span>}
+                          </span>
+                        ))}
+                      </div>
+                      {currentRound.status === "open" && (
+                        <button
+                          data-testid="button-cancel-bet"
+                          onClick={() => cancelBetMutation.mutate()}
+                          disabled={cancelBetMutation.isPending}
+                          className="text-xs text-destructive hover:text-destructive/80 underline underline-offset-2 transition-colors shrink-0 ml-2"
+                        >
+                          {cancelBetMutation.isPending ? "撤回中..." : "撤回点餐"}
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
