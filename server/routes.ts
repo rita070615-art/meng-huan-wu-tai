@@ -647,14 +647,51 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       type: "system",
     });
 
+    // Build bet summary in betting-time order (oldest first)
+    const allBets = [...roundBets].reverse();
+    if (allBets.length > 0) {
+      const lines = allBets.map((b) => {
+        const optLabel = options.find(o => o.key === b.option)?.label || b.option;
+        const name = b.nickname || b.username;
+        return `${name}  ${optLabel}  ${b.amount.toLocaleString()}`;
+      });
+      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n");
+      const summaryMsg = await storage.createMessage({
+        roomId: req.params.id,
+        content: summaryContent,
+        type: "system",
+      });
+      broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
+    }
+
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: parsed.data.winnerOption, message: msg });
     res.json(closed);
+  });
+
+  // Pause / Resume round
+  app.post("/api/rooms/:id/bet-round/pause", requireAdmin, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(404).json({ error: "No active round" });
+    if (round.status === "paused") return res.status(400).json({ error: "Round already paused" });
+    const updated = await storage.pauseBetRound(round.id);
+    broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: updated });
+    res.json(updated);
+  });
+
+  app.post("/api/rooms/:id/bet-round/resume", requireAdmin, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(404).json({ error: "No active round" });
+    if (round.status !== "paused") return res.status(400).json({ error: "Round not paused" });
+    const updated = await storage.resumeBetRound(round.id);
+    broadcast(req.params.id, { type: "BET_ROUND_RESUMED", round: updated });
+    res.json(updated);
   });
 
   // BETS
   app.post("/api/rooms/:id/bets", requireAuth, async (req, res) => {
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round) return res.status(400).json({ error: "当前没有开放的投注" });
+    if (round.status === "paused") return res.status(400).json({ error: "点餐已暂停，请等待恢复" });
 
     const schema = z.object({ option: z.string(), amount: z.number().int().min(1) });
     const parsed = schema.safeParse(req.body);

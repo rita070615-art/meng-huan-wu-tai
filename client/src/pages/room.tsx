@@ -8,7 +8,7 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
+import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
 
@@ -134,6 +134,12 @@ export default function RoomPage() {
         if (data.type === "BET_OPTIONS_UPDATED" && data.round) {
           setLiveRound((prev) => prev ? { ...prev, options: data.round.options } : null);
         }
+        if (data.type === "BET_ROUND_PAUSED") {
+          setLiveRound((prev) => prev ? { ...prev, status: "paused" } : null);
+        }
+        if (data.type === "BET_ROUND_RESUMED") {
+          setLiveRound((prev) => prev ? { ...prev, status: "open" } : null);
+        }
         if (data.type === "ROOM_CHAT_MUTED") {
           setChatMuted(data.chatMuted);
         }
@@ -212,6 +218,18 @@ export default function RoomPage() {
   const closeRoundMutation = useMutation({
     mutationFn: (winnerOption: string) => apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption }),
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
+  });
+
+  const pauseRoundMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round/pause`, {}),
+    onSuccess: (data: BetRound) => setLiveRound((prev) => prev ? { ...prev, status: "paused" } : null),
+    onError: (e: Error) => toast({ title: "暂停失败", description: e.message, variant: "destructive" }),
+  });
+
+  const resumeRoundMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round/resume`, {}),
+    onSuccess: (data: BetRound) => setLiveRound((prev) => prev ? { ...prev, status: "open" } : null),
+    onError: (e: Error) => toast({ title: "恢复失败", description: e.message, variant: "destructive" }),
   });
 
   const muteUserMutation = useMutation({
@@ -303,17 +321,32 @@ export default function RoomPage() {
                 {chatMuted ? "解除禁言" : "全体禁言"}
               </Button>
               {currentRound && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-6 px-2 text-xs hover:border-amber-500 hover:text-amber-500"
-                  data-testid="button-admin-toggle-panel"
-                  onClick={() => setAdminPanelOpen(v => !v)}
-                >
-                  <Settings className="w-3 h-3 mr-1" />
-                  {adminPanelOpen ? "收起" : "点餐设置"}
-                  {adminPanelOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="button-admin-pause-resume"
+                    disabled={pauseRoundMutation.isPending || resumeRoundMutation.isPending}
+                    className={`h-6 px-2 text-xs ${currentRound.status === "paused" ? "border-green-500 text-green-500 hover:bg-green-500/10" : "border-amber-500 text-amber-500 hover:bg-amber-500/10"}`}
+                    onClick={() => currentRound.status === "paused" ? resumeRoundMutation.mutate() : pauseRoundMutation.mutate()}
+                  >
+                    {currentRound.status === "paused"
+                      ? <><Play className="w-3 h-3 mr-1" />继续点餐</>
+                      : <><Pause className="w-3 h-3 mr-1" />暂停点餐</>
+                    }
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2 text-xs hover:border-amber-500 hover:text-amber-500"
+                    data-testid="button-admin-toggle-panel"
+                    onClick={() => setAdminPanelOpen(v => !v)}
+                  >
+                    <Settings className="w-3 h-3 mr-1" />
+                    {adminPanelOpen ? "收起" : "点餐设置"}
+                    {adminPanelOpen ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+                  </Button>
+                </>
               )}
               <Link href="/admin">
                 <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" data-testid="button-admin-panel-link">
@@ -516,7 +549,10 @@ export default function RoomPage() {
               {/* 菜单状态 strip (mobile-friendly, always visible) */}
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-primary">菜单进行中</span>
+                  {currentRound.status === "paused"
+                    ? <span className="font-semibold text-amber-500">已暂停点餐</span>
+                    : <span className="font-semibold text-primary">菜单进行中</span>
+                  }
                   {bankerName && (
                     <span className="text-amber-500 font-medium">
                       主厨{bankerName}<span className="text-muted-foreground text-[10px] ml-0.5">（桩）</span>
@@ -541,7 +577,7 @@ export default function RoomPage() {
               {/* Banker is exempt */}
               {user?.id === (currentRound as any)?.bankerUserId ? (
                 <div className="text-center text-xs text-amber-500 py-2 font-medium">
-                  您是本轮主厨（桩），无需下注
+                  您是本轮主厨（桩），无需点餐
                 </div>
               ) : pendingBet ? (
                 <div className="rounded-md border-2 border-primary/50 bg-primary/5 p-3 space-y-2">
@@ -581,6 +617,10 @@ export default function RoomPage() {
               ) : !canStillBet ? (
                 <div className="text-center text-xs text-muted-foreground py-2 flex items-center justify-center gap-1.5">
                   <span className="text-green-500">✓</span> 已完成点餐，等待结果
+                </div>
+              ) : currentRound.status === "paused" ? (
+                <div className="text-center text-xs text-amber-500 py-2 font-medium">
+                  点餐暂停中，请稍候...
                 </div>
               ) : (
                 <div className="space-y-2">

@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   users, rooms, betRounds, bets, messages, botSettings, privateMessages,
@@ -37,6 +37,8 @@ export interface IStorage {
   getActiveBetRound(roomId: string): Promise<BetRound | undefined>;
   getBetRound(id: string): Promise<BetRound | undefined>;
   closeBetRound(id: string, winnerOption: string): Promise<BetRound | undefined>;
+  pauseBetRound(id: string): Promise<BetRound | undefined>;
+  resumeBetRound(id: string): Promise<BetRound | undefined>;
   updateBetRoundOptions(id: string, options: object): Promise<BetRound | undefined>;
 
   // Bets
@@ -172,9 +174,19 @@ export class DbStorage implements IStorage {
 
   async getActiveBetRound(roomId: string): Promise<BetRound | undefined> {
     const result = await db.select().from(betRounds)
-      .where(and(eq(betRounds.roomId, roomId), eq(betRounds.status, "open")))
+      .where(and(eq(betRounds.roomId, roomId), or(eq(betRounds.status, "open"), eq(betRounds.status, "paused"))))
       .orderBy(desc(betRounds.createdAt))
       .limit(1);
+    return result[0];
+  }
+
+  async pauseBetRound(id: string): Promise<BetRound | undefined> {
+    const result = await db.update(betRounds).set({ status: "paused" }).where(eq(betRounds.id, id)).returning();
+    return result[0];
+  }
+
+  async resumeBetRound(id: string): Promise<BetRound | undefined> {
+    const result = await db.update(betRounds).set({ status: "open" }).where(eq(betRounds.id, id)).returning();
     return result[0];
   }
 
