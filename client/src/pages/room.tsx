@@ -66,9 +66,11 @@ export default function RoomPage() {
     enabled: !!roomId,
   });
 
-  const { data: adminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number; isShill: boolean }>>({
+  const { data: adminUsers, refetch: refetchAdminUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number; isShill: boolean }>>({
     queryKey: ["/api/admin/users"],
     enabled: !!isAdmin,
+    refetchInterval: 30000,
+    staleTime: 0,
   });
 
   const { data: onlineUsers, refetch: refetchOnlineUsers } = useQuery<Array<{ id: string; username: string; nickname: string | null; balance: number }>>({
@@ -139,6 +141,7 @@ export default function RoomPage() {
           });
           queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
         }
         if (data.type === "BET_OPTIONS_UPDATED" && data.round) {
           setLiveRound((prev) => prev ? { ...prev, options: data.round.options } : null);
