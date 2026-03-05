@@ -23,6 +23,7 @@ export interface IStorage {
   banUser(id: string, banned: boolean): Promise<User | undefined>;
   muteUser(id: string, muted: boolean): Promise<User | undefined>;
   setUserRole(id: string, role: string): Promise<User | undefined>;
+  updateUserIp(id: string, ip: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
   // Rooms
@@ -137,6 +138,10 @@ export class DbStorage implements IStorage {
   async muteUser(id: string, muted: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ muted }).where(eq(users.id, id)).returning();
     return result[0];
+  }
+
+  async updateUserIp(id: string, ip: string): Promise<void> {
+    await db.update(users).set({ registrationIp: ip }).where(eq(users.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

@@ -169,6 +169,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(403).json({ error: "该账号为托管账户，无法登录" });
     }
 
+    const loginIp = getClientIp(req);
+    if (loginIp) storage.updateUserIp(user.id, loginIp);
     req.session.userId = user.id;
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;

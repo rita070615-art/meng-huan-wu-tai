@@ -793,7 +793,7 @@ function UsersAdmin() {
                   <p className="text-xs text-muted-foreground/60 font-mono mt-0.5">
                     编号：#{getSeqNum(u.id)}
                     {u.registrationIp && (
-                      <span className="ml-2 select-all" title="注册IP">· IP: {u.registrationIp}</span>
+                      <span className="ml-2 select-all cursor-text" title="IP地址">· IP: {u.registrationIp}</span>
                     )}
                   </p>
                 </div>
