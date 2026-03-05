@@ -653,15 +653,6 @@ export default function RoomPage() {
                   </span>
                 )}
               </div>
-              {/* Option distribution bar */}
-              {totalPool > 0 && options.length > 0 && (
-                <div className="flex gap-1 h-1.5 rounded-full overflow-hidden">
-                  {options.map(opt => {
-                    const pct = Math.round(((optionTotals[opt.key] || 0) / totalPool) * 100);
-                    return pct > 0 ? <div key={opt.key} style={{ width: `${pct}%`, backgroundColor: opt.color }} title={`${opt.label} ${pct}%`} /> : null;
-                  })}
-                </div>
-              )}
               {/* Banker is exempt */}
               {user?.id === (currentRound as any)?.bankerUserId ? (
                 <div className="text-center text-xs text-amber-500 py-2 font-medium">
@@ -717,8 +708,6 @@ export default function RoomPage() {
                     style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
                   >
                     {options.map((opt) => {
-                      const total = optionTotals[opt.key] || 0;
-                      const pct = totalPool > 0 ? Math.round((total / totalPool) * 100) : 0;
                       const isBankerOpt = bankerOptionKey === opt.key && user?.id !== (currentRound as any)?.bankerUserId;
                       const alreadyBet = userBetOptions.has(opt.key);
                       return (
@@ -738,7 +727,6 @@ export default function RoomPage() {
                           {alreadyBet && !isBankerOpt && <span className="absolute top-0.5 right-0.5 text-green-500 text-xs">✓</span>}
                           {isBankerOpt && <span className="absolute top-0.5 right-0.5 text-amber-500 text-xs">桩</span>}
                           <span className="text-base font-bold" style={{ color: opt.color }}>{opt.label}</span>
-                          <span className="text-xs text-muted-foreground mt-0.5">{pct}%</span>
                         </button>
                       );
                     })}
