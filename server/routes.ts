@@ -43,6 +43,7 @@ type WsClient = {
   userId: string;
   username: string;
   roomId: string;
+  isAlive: boolean;
 };
 
 const wsClients: WsClient[] = [];
@@ -1013,14 +1014,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Heartbeat: ping every 20s, terminate dead connections
+  const heartbeat = setInterval(() => {
+    wsClients.forEach((c) => {
+      if (!c.isAlive) {
+        c.ws.terminate();
+        return;
+      }
+      c.isAlive = false;
+      c.ws.ping();
+    });
+  }, 20000);
+
+  wss.on("close", () => clearInterval(heartbeat));
+
   wss.on("connection", (ws, req) => {
     const url = new URL(req.url || "", `http://localhost`);
     const roomId = url.searchParams.get("roomId") || "";
     const userId = url.searchParams.get("userId") || "";
     const username = url.searchParams.get("username") || "";
 
-    const client: WsClient = { ws, userId, username, roomId };
+    const client: WsClient = { ws, userId, username, roomId, isAlive: true };
     wsClients.push(client);
+
+    ws.on("pong", () => { client.isAlive = true; });
+
+    ws.on("error", () => {
+      const idx = wsClients.indexOf(client);
+      if (idx !== -1) wsClients.splice(idx, 1);
+    });
 
     ws.on("close", () => {
       const idx = wsClients.indexOf(client);

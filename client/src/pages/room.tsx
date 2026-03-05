@@ -37,6 +37,8 @@ export default function RoomPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsDestroyedRef = useRef(false);
 
   const { data: room } = useQuery<Room>({ queryKey: [`/api/rooms/${roomId}`], enabled: !!roomId });
   const { data: messages, isLoading: msgsLoading, error: msgsError } = useQuery<Message[]>({
@@ -87,17 +89,18 @@ export default function RoomPage() {
 
   useEffect(() => {
     if (!roomId || !user) return;
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(
-      `${proto}//${window.location.host}/ws?roomId=${roomId}&userId=${user.id}&username=${encodeURIComponent(user.username)}`
-    );
-    wsRef.current = ws;
+    wsDestroyedRef.current = false;
 
-    ws.onmessage = (e) => {
+    let retryDelay = 1000;
+
+    const handleMessage = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
         if (data.type === "MESSAGE" && data.message) {
-          setLiveMessages((prev) => [...prev, data.message]);
+          setLiveMessages((prev) => {
+            if (prev.some(m => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
         }
         if (data.type === "MESSAGE_DELETED" && data.messageId) {
           setLiveMessages((prev) => prev.filter((m) => m.id !== data.messageId));
@@ -111,14 +114,20 @@ export default function RoomPage() {
         if (data.type === "BET_ROUND_STARTED") {
           setLiveRound({ ...data.round, bets: [] });
           setLiveBets([]);
-          if (data.message) setLiveMessages((prev) => [...prev, data.message]);
+          if (data.message) setLiveMessages((prev) => {
+            if (prev.some(m => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
           queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         }
         if (data.type === "BET_ROUND_CLOSED") {
           setLiveRound(null);
           setPendingWinner(null);
-          if (data.message) setLiveMessages((prev) => [...prev, data.message]);
+          if (data.message) setLiveMessages((prev) => {
+            if (prev.some(m => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
           queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
           queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
         }
@@ -131,7 +140,33 @@ export default function RoomPage() {
       } catch {}
     };
 
-    return () => ws.close();
+    const connect = () => {
+      if (wsDestroyedRef.current) return;
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(
+        `${proto}//${window.location.host}/ws?roomId=${roomId}&userId=${user.id}&username=${encodeURIComponent(user.username)}`
+      );
+      wsRef.current = ws;
+
+      ws.onopen = () => { retryDelay = 1000; };
+      ws.onmessage = handleMessage;
+      ws.onerror = () => ws.close();
+      ws.onclose = () => {
+        if (wsDestroyedRef.current) return;
+        wsReconnectTimer.current = setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 1.5, 10000);
+          connect();
+        }, retryDelay);
+      };
+    };
+
+    connect();
+
+    return () => {
+      wsDestroyedRef.current = true;
+      if (wsReconnectTimer.current) clearTimeout(wsReconnectTimer.current);
+      wsRef.current?.close();
+    };
   }, [roomId, user]);
 
   useEffect(() => {
