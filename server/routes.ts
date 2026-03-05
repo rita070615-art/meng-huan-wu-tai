@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import * as XLSX from "xlsx";
 
 declare module "express-session" {
   interface SessionData {
@@ -23,15 +24,15 @@ declare module "express-session" {
 const userMsgTimestamps = new Map<string, number[]>();
 function checkSpam(userId: string, content: string): string | null {
   // Content checks
-  if (content.length > 300) return "消息过长，请限制在300字以内";
+  if (content.length > 30) return "消息过长，请限制在30字以内";
   if (/https?:\/\/|www\./i.test(content)) return "不允许发送链接";
   if (/(.)\1{5,}/.test(content)) return "请勿发送大量重复字符";
   const banned = ["微信", "QQ群", "加群", "代理", "兼职", "广告", "优惠", "刷单"];
   if (banned.some(k => content.includes(k))) return "消息含有违禁内容，请勿发送广告";
-  // Rate limit: max 4 messages per 8 seconds
+  // Rate limit: max 5 messages per 60 seconds
   const now = Date.now();
-  const timestamps = (userMsgTimestamps.get(userId) || []).filter(t => now - t < 8000);
-  if (timestamps.length >= 4) return "发送太快，请稍后再试";
+  const timestamps = (userMsgTimestamps.get(userId) || []).filter(t => now - t < 60000);
+  if (timestamps.length >= 5) return "发送太快，1分钟内最多发送5条消息";
   timestamps.push(now);
   userMsgTimestamps.set(userId, timestamps);
   return null;
@@ -403,7 +404,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/rooms/:id/messages", requireAuth, async (req, res) => {
-    const schema = z.object({ content: z.string().min(1).max(500) });
+    const schema = z.object({ content: z.string().min(1).max(30) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
@@ -520,7 +521,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     ];
 
     const options = req.body.options || defaultOptions;
-    const round = await storage.createBetRound({ roomId: req.params.id, options });
+    const { bankerUserId, bankerNickname, bankerOption, bankerMaxBet } = req.body;
+    const round = await storage.createBetRound({
+      roomId: req.params.id,
+      options,
+      bankerUserId: bankerUserId || undefined,
+      bankerNickname: bankerNickname || undefined,
+      bankerOption: bankerOption || undefined,
+      bankerMaxBet: bankerMaxBet ? Number(bankerMaxBet) : undefined,
+    });
 
     const msg = await storage.createMessage({
       roomId: req.params.id,
@@ -571,7 +580,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 broadcast(roomId, { type: "MESSAGE", message: warnMsg });
                 return;
               }
-              const randomOption = optionsList[Math.floor(Math.random() * optionsList.length)].key;
+              const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
+              const randomOption = availableOptions[Math.floor(Math.random() * availableOptions.length)].key;
               const shillUser = await storage.getUser(shillId);
               const bet = await storage.placeBet({
                 roundId,
@@ -649,8 +659,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
 
-    const existing = await storage.getUserBetInRound(req.session.userId!, round.id);
-    if (existing) return res.status(400).json({ error: "您在本轮已下注" });
+    // Banker's option is blocked for other players
+    if (round.bankerOption && round.bankerOption === parsed.data.option && req.session.userId !== round.bankerUserId) {
+      return res.status(400).json({ error: "该选项为庄家属性，闲家不可下注" });
+    }
+
+    // Check if user already bet on this specific option
+    const existingForOption = await storage.getUserBetForOption(req.session.userId!, round.id, parsed.data.option);
+    if (existingForOption) return res.status(400).json({ error: "您已对该选项下注，每个选项只能下注一次" });
+
+    // Check total bet cap (bankerMaxBet)
+    if (round.bankerMaxBet) {
+      const totalBets = await storage.getTotalBetsForRound(round.id);
+      if (totalBets + parsed.data.amount > round.bankerMaxBet) {
+        const remaining = round.bankerMaxBet - totalBets;
+        return res.status(400).json({ error: `本轮总下注已达上限，最多还可下注 ${remaining.toLocaleString()} 积分` });
+      }
+    }
 
     const user = await storage.getUser(req.session.userId!);
     if (!user || user.balance < parsed.data.amount) {
@@ -826,6 +851,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
     await storage.deletePrivateThread(req.params.userId);
     res.json({ ok: true });
+  });
+
+  app.get("/api/admin/export/excel", requireAdmin, async (req, res) => {
+    const rounds = await storage.getAllBetRoundsWithBets();
+
+    // Sheet 1: Round summary
+    const summaryRows = rounds.map(r => {
+      const opts = (r.options as Array<{ key: string; label: string }>) || [];
+      const totalPool = r.bets.reduce((s, b) => s + b.amount, 0);
+      const winnerBets = r.winnerOption ? r.bets.filter(b => b.option === r.winnerOption) : [];
+      const winnerPool = winnerBets.reduce((s, b) => s + b.amount, 0);
+      const platformFee = r.winnerOption && winnerPool > 0 ? Math.floor(totalPool * 0.1) : 0;
+      const winnerLabel = r.winnerOption ? (opts.find(o => o.key === r.winnerOption)?.label || r.winnerOption) : "未开奖";
+      return {
+        "房间": r.roomName,
+        "轮次ID": r.id,
+        "开始时间": r.createdAt ? new Date(r.createdAt).toLocaleString("zh-CN") : "",
+        "结束时间": r.closedAt ? new Date(r.closedAt).toLocaleString("zh-CN") : "",
+        "状态": r.status === "open" ? "进行中" : "已结束",
+        "庄家": r.bankerNickname || "",
+        "庄家属性": r.bankerOption ? (opts.find(o => o.key === r.bankerOption)?.label || r.bankerOption) : "",
+        "庄家上限": r.bankerMaxBet || "",
+        "获胜属性": winnerLabel,
+        "总下注池": totalPool,
+        "平台抽成(10%)": platformFee,
+        "参与人数": new Set(r.bets.map(b => b.userId)).size,
+        "下注笔数": r.bets.length,
+      };
+    });
+
+    // Sheet 2: Bet details
+    const betRows = rounds.flatMap(r => {
+      const opts = (r.options as Array<{ key: string; label: string }>) || [];
+      const totalPool = r.bets.reduce((s, b) => s + b.amount, 0);
+      const winnerPool = r.winnerOption ? r.bets.filter(b => b.option === r.winnerOption).reduce((s, b) => s + b.amount, 0) : 0;
+      return r.bets.map(b => {
+        const isWinner = b.option === r.winnerOption;
+        const payout = isWinner && winnerPool > 0 ? Math.floor((b.amount / winnerPool) * totalPool * 0.9) : 0;
+        const profit = isWinner ? payout - b.amount : -b.amount;
+        const optLabel = opts.find(o => o.key === b.option)?.label || b.option;
+        return {
+          "房间": r.roomName,
+          "轮次ID": r.id,
+          "时间": b.createdAt ? new Date(b.createdAt).toLocaleString("zh-CN") : "",
+          "用户昵称": b.nickname || b.username,
+          "账号": b.username,
+          "下注属性": optLabel,
+          "下注金额": b.amount,
+          "是否获胜": isWinner ? "✓" : "",
+          "返还积分": payout,
+          "盈亏": profit,
+          "庄家": r.bankerNickname || "",
+        };
+      });
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "轮次汇总");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(betRows), "下注明细");
+
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Disposition", `attachment; filename="report_${Date.now()}.xlsx"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(buf);
   });
 
   app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {

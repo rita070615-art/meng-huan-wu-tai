@@ -96,10 +96,38 @@ Events:
 - `ROOM_CREATED` / `ROOM_UPDATED` / `ROOM_DELETED`
 - `NEW_PRIVATE_MESSAGE` - private message notification
 
+## Banker (庄) System
+
+When starting a round, admin can optionally configure:
+- 庄家 (banker): any non-shill user selected from dropdown
+- 庄家属性: which option the banker "owns" (A/B/C/D)
+- 庄家上限: maximum total bets allowed against the banker's option
+
+Rules:
+- Non-banker users cannot bet on the banker's option (shown as "庄" badge, disabled)
+- Total bets on banker's option are capped at bankerMaxBet (enforced server-side)
+- Banker info displayed in sidebar and betting panel banner
+
+Banker data stored in betRounds: `bankerUserId`, `bankerNickname`, `bankerOption`, `bankerMaxBet`
+
+## Multiple Bets per Round
+
+Users can bet on multiple different options in one round:
+- One bet per option per round (e.g., can bet on A and C, but not A twice)
+- Options already bet on show ✓ mark and are disabled
+- Clicking a new bet replaces selectedOption for next submission
+
+## Excel Export
+
+Admin page has a green "导出Excel" download button (GET /api/admin/export/excel):
+- Sheet 1 (轮次汇总): one row per round with winner, total pool, banker info, profit
+- Sheet 2 (下注明细): all individual bets across all rounds
+- Uses `xlsx` package, streamed as binary attachment
+
 ## TOTP / 2FA
 
 - Uses `speakeasy` with `window: 1`
-- Admins bypass TOTP entirely
+- All users including admins require TOTP if enabled
 - DONG798 / Aaaa1111 has TOTP enabled with secret `O5VXITD5JZQX2ZTUO5JSCVKWH5XXI3SE`
 
 ## Key Technical Notes

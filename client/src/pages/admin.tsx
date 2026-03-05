@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -38,24 +38,32 @@ export default function AdminPage() {
       <Header title="管理后台" showBack />
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
         <Tabs defaultValue="rooms">
-          <TabsList className="mb-6 w-full sm:w-auto">
-            <TabsTrigger value="rooms" data-testid="tab-rooms" className="flex-1 sm:flex-none">
-              <MessageSquare className="w-4 h-4 mr-1.5" />
-              聊天室管理
-            </TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users" className="flex-1 sm:flex-none">
-              <Users className="w-4 h-4 mr-1.5" />
-              用户管理
-            </TabsTrigger>
-            <TabsTrigger value="bot" data-testid="tab-bot" className="flex-1 sm:flex-none">
-              <Bot className="w-4 h-4 mr-1.5" />
-              托管设置
-            </TabsTrigger>
-            <TabsTrigger value="inbox" data-testid="tab-inbox" className="flex-1 sm:flex-none">
-              <Mail className="w-4 h-4 mr-1.5" />
-              私信收件箱
-            </TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-3 mb-6 flex-wrap">
+            <TabsList className="w-full sm:w-auto flex-1">
+              <TabsTrigger value="rooms" data-testid="tab-rooms" className="flex-1 sm:flex-none">
+                <MessageSquare className="w-4 h-4 mr-1.5" />
+                聊天室管理
+              </TabsTrigger>
+              <TabsTrigger value="users" data-testid="tab-users" className="flex-1 sm:flex-none">
+                <Users className="w-4 h-4 mr-1.5" />
+                用户管理
+              </TabsTrigger>
+              <TabsTrigger value="bot" data-testid="tab-bot" className="flex-1 sm:flex-none">
+                <Bot className="w-4 h-4 mr-1.5" />
+                托管设置
+              </TabsTrigger>
+              <TabsTrigger value="inbox" data-testid="tab-inbox" className="flex-1 sm:flex-none">
+                <Mail className="w-4 h-4 mr-1.5" />
+                私信收件箱
+              </TabsTrigger>
+            </TabsList>
+            <a href="/api/admin/export/excel" download data-testid="button-export-excel">
+              <Button variant="outline" size="sm" className="shrink-0 h-9 gap-1.5 text-green-600 border-green-600/40 hover:bg-green-600/5">
+                <FileDown className="w-4 h-4" />
+                导出Excel
+              </Button>
+            </a>
+          </div>
 
           <TabsContent value="rooms">
             <RoomsAdmin />

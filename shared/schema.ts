@@ -45,6 +45,10 @@ export const betRounds = pgTable("bet_rounds", {
   options: jsonb("options").notNull(),
   status: text("status").notNull().default("open"),
   winnerOption: text("winner_option"),
+  bankerUserId: varchar("banker_user_id", { length: 36 }),
+  bankerNickname: text("banker_nickname"),
+  bankerOption: text("banker_option"),
+  bankerMaxBet: integer("banker_max_bet"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
 });

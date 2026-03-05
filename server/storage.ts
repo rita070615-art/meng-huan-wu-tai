@@ -33,7 +33,7 @@ export interface IStorage {
   deleteRoom(id: string): Promise<void>;
 
   // Bet Rounds
-  createBetRound(data: { roomId: string; options: object }): Promise<BetRound>;
+  createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number }): Promise<BetRound>;
   getActiveBetRound(roomId: string): Promise<BetRound | undefined>;
   getBetRound(id: string): Promise<BetRound | undefined>;
   closeBetRound(id: string, winnerOption: string): Promise<BetRound | undefined>;
@@ -43,7 +43,11 @@ export interface IStorage {
   placeBet(data: { roundId: string; roomId: string; userId: string; username: string; nickname?: string | null; option: string; amount: number }): Promise<Bet>;
   getBetsForRound(roundId: string): Promise<Bet[]>;
   getBetsForRoom(roomId: string): Promise<Bet[]>;
-  getUserBetInRound(userId: string, roundId: string): Promise<Bet | undefined>;
+  getUserBetForOption(userId: string, roundId: string, option: string): Promise<Bet | undefined>;
+  getUserBetsInRound(userId: string, roundId: string): Promise<Bet[]>;
+  getTotalBetsForRound(roundId: string): Promise<number>;
+  getAllBetRoundsWithBets(): Promise<Array<BetRound & { bets: Bet[]; roomName: string }>>;
+
 
   // Messages
   createMessage(data: { roomId: string; userId?: string; username?: string; content: string; type?: string }): Promise<Message>;
@@ -160,7 +164,7 @@ export class DbStorage implements IStorage {
     await db.update(rooms).set({ isActive: false }).where(eq(rooms.id, id));
   }
 
-  async createBetRound(data: { roomId: string; options: object }): Promise<BetRound> {
+  async createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number }): Promise<BetRound> {
     const id = randomUUID();
     const result = await db.insert(betRounds).values({ id, ...data, status: "open" }).returning();
     return result[0];
@@ -206,11 +210,33 @@ export class DbStorage implements IStorage {
     return db.select().from(bets).where(eq(bets.roomId, roomId)).orderBy(desc(bets.createdAt)).limit(50);
   }
 
-  async getUserBetInRound(userId: string, roundId: string): Promise<Bet | undefined> {
+  async getUserBetForOption(userId: string, roundId: string, option: string): Promise<Bet | undefined> {
     const result = await db.select().from(bets)
-      .where(and(eq(bets.userId, userId), eq(bets.roundId, roundId)))
+      .where(and(eq(bets.userId, userId), eq(bets.roundId, roundId), eq(bets.option, option)))
       .limit(1);
     return result[0];
+  }
+
+  async getUserBetsInRound(userId: string, roundId: string): Promise<Bet[]> {
+    return db.select().from(bets)
+      .where(and(eq(bets.userId, userId), eq(bets.roundId, roundId)));
+  }
+
+  async getTotalBetsForRound(roundId: string): Promise<number> {
+    const result = await db.select().from(bets).where(eq(bets.roundId, roundId));
+    return result.reduce((s, b) => s + b.amount, 0);
+  }
+
+  async getAllBetRoundsWithBets(): Promise<Array<BetRound & { bets: Bet[]; roomName: string }>> {
+    const allRooms = await db.select().from(rooms);
+    const allRounds = await db.select().from(betRounds).orderBy(desc(betRounds.createdAt)).limit(500);
+    const allBets = await db.select().from(bets);
+    const roomMap = new Map(allRooms.map(r => [r.id, r.name]));
+    return allRounds.map(round => ({
+      ...round,
+      roomName: roomMap.get(round.roomId) || round.roomId,
+      bets: allBets.filter(b => b.roundId === round.id),
+    }));
   }
 
   async createMessage(data: { roomId: string; userId?: string; username?: string; content: string; type?: string }): Promise<Message> {
