@@ -530,6 +530,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       pumpRate,
     });
 
+    // Deduct banker's pool from their balance
+    if (bankerUserId && bankerMaxBet) {
+      const banker = await storage.getUser(bankerUserId);
+      if (banker) {
+        await storage.updateUserBalance(bankerUserId, banker.balance - Number(bankerMaxBet));
+      }
+    }
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
       content: "今日菜单已开放，请选择您的口味。",
@@ -600,7 +608,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 roomId,
                 userId: shillId,
                 username: shillDisplayName,
-                content: `${shillDisplayName}：${shillOptLabel}${amount.toLocaleString()}`,
+                content: `${shillDisplayName}:${shillOptLabel}${amount.toLocaleString()}`,
                 type: "bet",
               });
               broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
@@ -664,6 +672,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.updateUserBalance(bet.userId, user.balance + payout);
     }
 
+    // Return remainder to banker after paying winners
+    let bankerReturnMsg = "";
+    if (round.bankerUserId && round.bankerMaxBet) {
+      const banker = await storage.getUser(round.bankerUserId);
+      if (banker) {
+        let bankerReturn: number;
+        if (useFixedOdds) {
+          // Fixed odds: banker funded payouts; return whatever's left
+          bankerReturn = Math.max(0, round.bankerMaxBet - totalPayout);
+        } else {
+          // Parimutuel: banker just capped total bets, return full deposit
+          bankerReturn = round.bankerMaxBet;
+        }
+        await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
+        const bankerName = round.bankerNickname || banker.nickname || banker.username;
+        bankerReturnMsg = `\n庄家 ${bankerName} 返还：${bankerReturn.toLocaleString()}`;
+      }
+    }
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
       content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || parsed.data.winnerOption}\n感谢参与点餐体验。`,
@@ -684,7 +711,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
       });
       const pump = pumpRate > 0 ? `\n抽水 ${pumpRate}%  总派彩 ${totalPayout.toLocaleString()}` : `\n总派彩 ${totalPayout.toLocaleString()}`;
-      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump;
+      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump + bankerReturnMsg;
       const summaryMsg = await storage.createMessage({
         roomId: req.params.id,
         content: summaryContent,
@@ -763,7 +790,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       roomId: req.params.id,
       userId: user.id,
       username: displayName,
-      content: `${displayName}：${optLabel}${parsed.data.amount.toLocaleString()}`,
+      content: `${displayName}:${optLabel}${parsed.data.amount.toLocaleString()}`,
       type: "bet",
     });
     broadcast(req.params.id, { type: "MESSAGE", message: betMsg });

@@ -1032,7 +1032,7 @@ function ChatMessage({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
-  const isBet = msg.type === "bet" || (msg.type !== "system" && msg.username != null && msg.content.startsWith(`${msg.username}：`));
+  const isBet = msg.type === "bet" || (msg.type !== "system" && msg.username != null && (msg.content.startsWith(`${msg.username}:`) || msg.content.startsWith(`${msg.username}：`)));
   const isOwn = msg.userId === currentUserId;
   const hasMention = msg.content.includes("@");
   const mentionsMe = currentUserNickname && msg.content.toLowerCase().includes(`@${currentUserNickname.toLowerCase()}`);
