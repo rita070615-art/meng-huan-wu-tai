@@ -641,20 +641,40 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round) return res.status(404).json({ error: "No active round" });
 
-    const schema = z.object({ winnerOption: z.string(), double: z.boolean().optional() });
+    const schema = z.object({
+      winnerOption: z.string().optional(),
+      optionPoints: z.record(z.string(), z.number()).optional(),
+      double: z.boolean().optional(),
+    });
     const parsed = schema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Invalid winner" });
+    if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
 
     const doubleMultiplier = parsed.data.double ? 2 : 1;
 
-    const closed = await storage.closeBetRound(round.id, parsed.data.winnerOption);
+    const options = round.options as Array<{ key: string; label: string; color: string; ratio?: number }>;
+
+    // Determine winner: from optionPoints (highest score) or directly from winnerOption
+    let winnerOptionKey: string;
+    const optionPoints = parsed.data.optionPoints;
+    if (optionPoints && Object.keys(optionPoints).length > 0) {
+      const sorted = options
+        .filter(o => optionPoints[o.key] != null)
+        .sort((a, b) => (optionPoints[b.key] ?? 0) - (optionPoints[a.key] ?? 0));
+      if (!sorted.length) return res.status(400).json({ error: "No valid option points" });
+      winnerOptionKey = sorted[0].key;
+    } else if (parsed.data.winnerOption) {
+      winnerOptionKey = parsed.data.winnerOption;
+    } else {
+      return res.status(400).json({ error: "Must provide winnerOption or optionPoints" });
+    }
+
+    const closed = await storage.closeBetRound(round.id, winnerOptionKey);
     const roundBets = await storage.getBetsForRound(round.id);
 
-    const options = round.options as Array<{ key: string; label: string; color: string; ratio?: number }>;
-    const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
+    const winnerOpt = options.find((o) => o.key === winnerOptionKey);
     // roundBets comes desc(createdAt), reverse for chronological (oldest = highest priority)
     const roundBetsChron = [...roundBets].reverse();
-    const winners = roundBetsChron.filter((b) => b.option === parsed.data.winnerOption);
+    const winners = roundBetsChron.filter((b) => b.option === winnerOptionKey);
     const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
     const pumpRate = (round as any).pumpRate ?? 0;           // 厨房服务费率
     const playerPumpRate = (round as any).playerPumpRate ?? 0; // 平台服务费率
@@ -724,9 +744,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
+    // Build points display line if optionPoints provided
+    const pointsLine = optionPoints && Object.keys(optionPoints).length > 0
+      ? "\n开奖点数：" + options.map(o => `${o.label} ${optionPoints[o.key] ?? "?"}`).join("  ")
+      : "";
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || parsed.data.winnerOption}\n感谢参与点餐体验。`,
+      content: `本轮厨房已完成出餐。${pointsLine}\n今日人气口味：${winnerOpt?.label || winnerOptionKey}${optionPoints ? `（${optionPoints[winnerOptionKey] ?? "?"}点）` : ""}\n感谢参与点餐体验。`,
       type: "system",
     });
 
@@ -735,7 +760,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const lines = roundBetsChron.map((b) => {
         const optLabel = options.find(o => o.key === b.option)?.label || b.option;
         const name = b.nickname || b.username;
-        const isWinner = b.option === parsed.data.winnerOption;
+        const isWinner = b.option === winnerOptionKey;
         const ratio = winnerOpt?.ratio;
         let suffix: string;
         if (!isWinner) {
@@ -769,7 +794,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
     }
 
-    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: parsed.data.winnerOption, message: msg });
+    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg });
     res.json(closed);
   });
 

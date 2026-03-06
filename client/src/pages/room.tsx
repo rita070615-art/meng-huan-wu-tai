@@ -30,7 +30,7 @@ export default function RoomPage() {
   const [liveRound, setLiveRound] = useState<BetRoundWithBets | null | undefined>(undefined);
   const [chatMuted, setChatMuted] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
-  const [pendingWinner, setPendingWinner] = useState<string | null>(null);
+  const [optionPoints, setOptionPoints] = useState<Record<string, string>>({});
   const [pendingBet, setPendingBet] = useState<{ option: string; amount: number } | null>(null);
   const [bankerUserId, setBankerUserId] = useState("");
   const [bankerOption, setBankerOption] = useState("");
@@ -132,6 +132,7 @@ export default function RoomPage() {
           setLiveRound({ ...data.round, bets: [] });
           setLiveBets([]);
           setSelectedOptions(new Set());
+          setOptionPoints({});
           setDoubleMode(false);
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
@@ -142,7 +143,7 @@ export default function RoomPage() {
         }
         if (data.type === "BET_ROUND_CLOSED") {
           setLiveRound(null);
-          setPendingWinner(null);
+          setOptionPoints({});
           setSelectedOptions(new Set());
           setDoubleMode(false);
           if (data.message) setLiveMessages((prev) => {
@@ -249,8 +250,8 @@ export default function RoomPage() {
   const [doubleMode, setDoubleMode] = useState(false);
 
   const closeRoundMutation = useMutation({
-    mutationFn: ({ winnerOption, double: dbl }: { winnerOption: string; double: boolean }) =>
-      apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption, double: dbl }),
+    mutationFn: ({ optionPoints: pts, double: dbl }: { optionPoints: Record<string, number>; double: boolean }) =>
+      apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { optionPoints: pts, double: dbl }),
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
   });
 
@@ -590,73 +591,89 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* During round: winner selection (collapsible) */}
+          {/* During round: points entry for winner calculation */}
           {isAdmin && currentRound && adminPanelOpen && (
-            <div className="px-3 pb-3 border-t border-border/50">
-              {!pendingWinner ? (
-                <div className="flex items-center gap-2 flex-wrap pt-2">
-                  <span className="text-xs text-muted-foreground">选择获胜选项（第一步）：</span>
-                  {(currentRound.options as BetOption[]).map((opt) => (
-                    <Button
-                      key={opt.key}
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-xs"
-                      style={{ borderColor: opt.color, color: opt.color }}
-                      onClick={() => setPendingWinner(opt.key)}
-                      data-testid={`button-admin-select-winner-${opt.key}`}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 flex-wrap pt-2">
-                  {(() => {
-                    const winOpt = (currentRound.options as BetOption[]).find(o => o.key === pendingWinner);
-                    return (
-                      <>
-                        <span className="text-xs font-semibold" style={{ color: winOpt?.color }}>
-                          确认开奖：{winOpt?.label} 获胜？
-                        </span>
-                        {currentRound.bankerUserId && (
-                          <button
-                            type="button"
-                            data-testid="button-admin-toggle-double"
-                            onClick={() => setDoubleMode(v => !v)}
-                            className={`h-6 px-2 text-xs rounded border transition-colors font-medium ${doubleMode ? "bg-orange-500 border-orange-500 text-white" : "border-orange-400 text-orange-400 hover:bg-orange-400/10"}`}
-                          >
-                            {doubleMode ? "✓ 庄翻倍" : "庄翻倍"}
-                          </button>
-                        )}
-                        <Button
-                          size="sm"
-                          className="h-6 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
-                          disabled={closeRoundMutation.isPending}
-                          onClick={() => {
-                            closeRoundMutation.mutate({ winnerOption: pendingWinner!, double: doubleMode });
-                            setPendingWinner(null);
-                            setDoubleMode(false);
-                            setAdminPanelOpen(false);
-                          }}
-                          data-testid="button-admin-confirm-winner"
-                        >
-                          ✓ 确认开奖
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 px-2 text-xs text-muted-foreground"
-                          onClick={() => { setPendingWinner(null); setDoubleMode(false); }}
-                          data-testid="button-admin-cancel-winner"
-                        >
-                          取消
-                        </Button>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
+            <div className="px-3 pb-3 border-t border-border/50 pt-2 space-y-2">
+              <span className="text-xs text-muted-foreground">填写各属性开奖点数（最高点获胜）：</span>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                {(currentRound.options as BetOption[]).map((opt) => {
+                  const pts = optionPoints[opt.key] ?? "";
+                  const allFilled = (currentRound.options as BetOption[]).every(o => {
+                    const v = optionPoints[o.key];
+                    return v !== undefined && v !== "" && !isNaN(Number(v));
+                  });
+                  const scores = allFilled
+                    ? (currentRound.options as BetOption[]).map(o => Number(optionPoints[o.key]))
+                    : [];
+                  const maxScore = scores.length ? Math.max(...scores) : null;
+                  const isWinner = allFilled && maxScore !== null && Number(pts) === maxScore;
+                  return (
+                    <div key={opt.key} className="flex items-center gap-1.5">
+                      <span
+                        className="text-xs font-medium w-10 shrink-0"
+                        style={{ color: opt.color }}
+                      >
+                        {opt.label}
+                      </span>
+                      <input
+                        data-testid={`input-points-${opt.key}`}
+                        type="number"
+                        min={0}
+                        value={pts}
+                        onChange={e => setOptionPoints(prev => ({ ...prev, [opt.key]: e.target.value }))}
+                        placeholder="点"
+                        className={`w-16 h-6 text-xs px-1.5 rounded border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary ${isWinner ? "border-green-500 ring-1 ring-green-500" : "border-border"}`}
+                      />
+                      {isWinner && <span className="text-[10px] text-green-500 font-bold">👑</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {currentRound.bankerUserId && (
+                  <button
+                    type="button"
+                    data-testid="button-admin-toggle-double"
+                    onClick={() => setDoubleMode(v => !v)}
+                    className={`h-6 px-2 text-xs rounded border transition-colors font-medium ${doubleMode ? "bg-orange-500 border-orange-500 text-white" : "border-orange-400 text-orange-400 hover:bg-orange-400/10"}`}
+                  >
+                    {doubleMode ? "✓ 庄翻倍" : "庄翻倍"}
+                  </button>
+                )}
+                <Button
+                  size="sm"
+                  className="h-6 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
+                  disabled={
+                    closeRoundMutation.isPending ||
+                    !(currentRound.options as BetOption[]).every(o => {
+                      const v = optionPoints[o.key];
+                      return v !== undefined && v !== "" && !isNaN(Number(v));
+                    })
+                  }
+                  onClick={() => {
+                    const pts: Record<string, number> = {};
+                    (currentRound.options as BetOption[]).forEach(o => {
+                      pts[o.key] = Number(optionPoints[o.key]);
+                    });
+                    closeRoundMutation.mutate({ optionPoints: pts, double: doubleMode });
+                    setOptionPoints({});
+                    setDoubleMode(false);
+                    setAdminPanelOpen(false);
+                  }}
+                  data-testid="button-admin-confirm-winner"
+                >
+                  ✓ 确认开奖
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs text-muted-foreground"
+                  onClick={() => { setOptionPoints({}); setDoubleMode(false); }}
+                  data-testid="button-admin-reset-points"
+                >
+                  清空
+                </Button>
+              </div>
             </div>
           )}
         </div>
