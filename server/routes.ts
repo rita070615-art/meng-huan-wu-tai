@@ -656,8 +656,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
     const hasbanker = !!(round.bankerUserId && round.bankerMaxBet);
 
+    // 上庄抽水：开局时已扣 bankerMaxBet，实际可用于赔付的资金 = floor(bankerMaxBet × (1 - pumpRate%))
+    const effectiveBankerFund = (hasbanker && round.bankerMaxBet)
+      ? Math.floor((round.bankerMaxBet as number) * (1 - pumpRate / 100))
+      : Infinity;
     // Track remaining banker funds (only relevant in fixed-odds with banker)
-    let bankerFund = (useFixedOdds && hasbanker) ? (round.bankerMaxBet as number) : Infinity;
+    let bankerFund = (useFixedOdds && hasbanker) ? effectiveBankerFund : Infinity;
 
     let totalPayout = 0;
     // Track per-bet actual payout for summary (betId -> payout)
@@ -669,7 +673,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const user = await storage.getUser(bet.userId);
         if (!user) { betPayouts.set(bet.id, 0); continue; }
         const gross = Math.floor(bet.amount * ratio);
-        const pump = Math.floor(gross * pumpRate / 100);
+        // 下庄抽水：只抽盈利部分
+        const profit = gross - bet.amount;
+        const pump = profit > 0 ? Math.floor(profit * pumpRate / 100) : 0;
         const fullPayout = gross - pump;
         // Cap payout by remaining banker fund
         const payout = Math.min(fullPayout, bankerFund);
@@ -681,35 +687,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
     } else {
-      // Parimutuel: share pool proportionally among winners
+      // Parimutuel: share pool proportionally among winners; 下庄抽水只抽盈利
       const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
-      const fee = Math.floor(totalPool * pumpRate / 100);
       for (const bet of winners) {
         const user = await storage.getUser(bet.userId);
         if (!user) { betPayouts.set(bet.id, 0); continue; }
-        const payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * (totalPool - fee)) : 0;
+        const gross = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool) : 0;
+        const profit = gross - bet.amount;
+        const pump = profit > 0 ? Math.floor(profit * pumpRate / 100) : 0;
+        const payout = Math.max(0, gross - pump);
         betPayouts.set(bet.id, payout);
         totalPayout += payout;
         await storage.updateUserBalance(bet.userId, user.balance + payout);
       }
     }
 
-    // Return remainder to banker after paying winners
+    // Return remainder to banker after paying winners (commission already taken upfront)
     let bankerReturnMsg = "";
     if (hasbanker) {
       const banker = await storage.getUser(round.bankerUserId);
       if (banker) {
-        let bankerReturnGross: number;
-        if (useFixedOdds) {
-          // Remaining unused banker fund goes back
-          bankerReturnGross = bankerFund === Infinity ? 0 : Math.max(0, bankerFund);
-        } else {
-          // Parimutuel: return full deposit since banker didn't fund payouts
-          bankerReturnGross = round.bankerMaxBet;
-        }
-        // Deduct pump rate from banker's return (upper side commission)
-        const bankerPump = Math.floor(bankerReturnGross * pumpRate / 100);
-        const bankerReturn = Math.max(0, bankerReturnGross - bankerPump);
+        // Remaining effective fund goes back; no additional deduction (already taken at start)
+        const bankerReturn = useFixedOdds
+          ? (bankerFund === Infinity ? 0 : Math.max(0, bankerFund))
+          : effectiveBankerFund; // parimutuel: return the after-commission deposit
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
