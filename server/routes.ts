@@ -870,6 +870,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       broadcast(req.params.id, { type: "MESSAGE_DELETED", messageId: msgId });
     }
 
+    const displayName = user.nickname || user.username;
+    const cancelMsg = await storage.createMessage({
+      roomId: req.params.id,
+      userId: user.id,
+      username: displayName,
+      content: `${displayName}:撤回了点餐`,
+      type: "bet",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: cancelMsg });
+
     res.json({ refund });
   });
 
