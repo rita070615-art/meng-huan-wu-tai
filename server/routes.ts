@@ -519,6 +519,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
+    const pumpRate = req.body.pumpRate != null ? Math.max(0, Math.min(50, Number(req.body.pumpRate))) : 0;
     const round = await storage.createBetRound({
       roomId: req.params.id,
       options,
@@ -526,6 +527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       bankerNickname: bankerNickname || undefined,
       bankerOption: bankerOption || undefined,
       bankerMaxBet: bankerMaxBet ? Number(bankerMaxBet) : undefined,
+      pumpRate,
     });
 
     const msg = await storage.createMessage({
@@ -634,20 +636,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const closed = await storage.closeBetRound(round.id, parsed.data.winnerOption);
     const roundBets = await storage.getBetsForRound(round.id);
 
+    const options = round.options as Array<{ key: string; label: string; color: string; ratio?: number }>;
+    const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
     const winners = roundBets.filter((b) => b.option === parsed.data.winnerOption);
     const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
-    const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
+    const pumpRate = (round as any).pumpRate ?? 0;
+    const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
 
+    let totalPayout = 0;
     for (const bet of winners) {
       const user = await storage.getUser(bet.userId);
-      if (user) {
-        const payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool * 0.9) : 0;
-        await storage.updateUserBalance(bet.userId, user.balance + payout);
+      if (!user) continue;
+      let payout: number;
+      if (useFixedOdds) {
+        const ratio = winnerOpt?.ratio ?? 1;
+        const gross = Math.floor(bet.amount * ratio);
+        const pump = Math.floor(gross * pumpRate / 100);
+        payout = gross - pump;
+      } else {
+        const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
+        const fee = Math.floor(totalPool * pumpRate / 100);
+        payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * (totalPool - fee)) : 0;
       }
+      totalPayout += payout;
+      await storage.updateUserBalance(bet.userId, user.balance + payout);
     }
 
-    const options = round.options as Array<{ key: string; label: string }>;
-    const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
     const msg = await storage.createMessage({
       roomId: req.params.id,
       content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || parsed.data.winnerOption}\n感谢参与点餐体验。`,
@@ -660,9 +674,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const lines = allBets.map((b) => {
         const optLabel = options.find(o => o.key === b.option)?.label || b.option;
         const name = b.nickname || b.username;
-        return `${name}  ${optLabel}  ${b.amount.toLocaleString()}`;
+        const isWinner = b.option === parsed.data.winnerOption;
+        const ratio = winnerOpt?.ratio;
+        const suffix = isWinner
+          ? (useFixedOdds && ratio ? ` ✓ × ${ratio}赔` : " ✓ 赢")
+          : " ✗";
+        return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
       });
-      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n");
+      const pump = pumpRate > 0 ? `\n抽水 ${pumpRate}%  总派彩 ${totalPayout.toLocaleString()}` : `\n总派彩 ${totalPayout.toLocaleString()}`;
+      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump;
       const summaryMsg = await storage.createMessage({
         roomId: req.params.id,
         content: summaryContent,

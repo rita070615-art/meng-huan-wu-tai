@@ -32,7 +32,7 @@ export interface IStorage {
   deleteRoom(id: string): Promise<void>;
 
   // Bet Rounds
-  createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number }): Promise<BetRound>;
+  createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number }): Promise<BetRound>;
   getActiveBetRound(roomId: string): Promise<BetRound | undefined>;
   getBetRound(id: string): Promise<BetRound | undefined>;
   closeBetRound(id: string, winnerOption: string): Promise<BetRound | undefined>;
@@ -158,7 +158,7 @@ export class DbStorage implements IStorage {
     await db.update(rooms).set({ isActive: false }).where(eq(rooms.id, id));
   }
 
-  async createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number }): Promise<BetRound> {
+  async createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number }): Promise<BetRound> {
     const id = randomUUID();
     const result = await db.insert(betRounds).values({ id, ...data, status: "open" }).returning();
     return result[0];

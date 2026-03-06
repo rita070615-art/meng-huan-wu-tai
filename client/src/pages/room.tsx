@@ -35,6 +35,8 @@ export default function RoomPage() {
   const [bankerUserId, setBankerUserId] = useState("");
   const [bankerOption, setBankerOption] = useState("");
   const [bankerMaxBet, setBankerMaxBet] = useState("");
+  const [pumpRate, setPumpRate] = useState("");
+  const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
 
@@ -234,7 +236,7 @@ export default function RoomPage() {
   });
 
   const startRoundMutation = useMutation({
-    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number }) =>
+    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; options?: object }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
     onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
@@ -467,6 +469,42 @@ export default function RoomPage() {
                   />
                 </div>
               </div>
+              {/* Odds & pump rate */}
+              <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium text-muted-foreground">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">抽水率%</span>
+                    <Input
+                      data-testid="input-pump-rate"
+                      type="number"
+                      min={0}
+                      max={50}
+                      value={pumpRate}
+                      onChange={e => setPumpRate(e.target.value)}
+                      placeholder="0"
+                      className="h-6 text-xs w-14 px-1.5"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[{key:"A",label:"力量",color:"#ef4444"},{key:"B",label:"体力",color:"#3b82f6"},{key:"C",label:"法力",color:"#a855f7"},{key:"D",label:"耐力",color:"#22c55e"}].map(o => (
+                    <div key={o.key}>
+                      <label className="text-[10px] font-medium" style={{ color: o.color }}>{o.label}</label>
+                      <Input
+                        data-testid={`input-ratio-${o.key}`}
+                        type="number"
+                        min={0}
+                        step={0.1}
+                        value={optionRatios[o.key]}
+                        onChange={e => setOptionRatios(r => ({ ...r, [o.key]: e.target.value }))}
+                        placeholder="赔率"
+                        className="h-6 text-xs mt-0.5 px-1.5"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
               <Button
                 size="sm"
                 className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white"
@@ -481,12 +519,25 @@ export default function RoomPage() {
                       return;
                     }
                   }
+                  const defaultOpts = [
+                    { key: "A", label: "力量", color: "#ef4444" },
+                    { key: "B", label: "体力", color: "#3b82f6" },
+                    { key: "C", label: "法力", color: "#a855f7" },
+                    { key: "D", label: "耐力", color: "#22c55e" },
+                  ].map(o => ({
+                    ...o,
+                    ...(optionRatios[o.key] ? { ratio: Number(optionRatios[o.key]) } : {}),
+                  }));
                   startRoundMutation.mutate({
                     bankerUserId: bankerUserId || undefined,
                     bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
                     bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
                     bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
+                    pumpRate: pumpRate ? Number(pumpRate) : undefined,
+                    options: defaultOpts,
                   });
+                  setOptionRatios({ A: "", B: "", C: "", D: "" });
+                  setPumpRate("");
                 }}
               >
                 <Play className="w-3 h-3 mr-1" />
@@ -739,6 +790,9 @@ export default function RoomPage() {
                           {alreadyBet && !isBankerOpt && <span className="absolute top-0.5 right-0.5 text-green-500 text-xs">✓</span>}
                           {isBankerOpt && <span className="absolute top-0.5 right-0.5 text-amber-500 text-xs">桩</span>}
                           <span className="text-base font-bold" style={{ color: opt.color }}>{opt.label}</span>
+                          {opt.ratio != null && opt.ratio > 0 && (
+                            <span className="text-[10px] text-muted-foreground mt-0.5">{opt.ratio}×</span>
+                          )}
                         </button>
                       );
                     })}
