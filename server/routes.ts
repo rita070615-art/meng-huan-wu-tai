@@ -520,6 +520,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const pumpRate = req.body.pumpRate != null ? Math.max(0, Math.min(50, Number(req.body.pumpRate))) : 0;
+    const playerPumpRate = req.body.playerPumpRate != null ? Math.max(0, Math.min(50, Number(req.body.playerPumpRate))) : 0;
     const round = await storage.createBetRound({
       roomId: req.params.id,
       options,
@@ -528,6 +529,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       bankerOption: bankerOption || undefined,
       bankerMaxBet: bankerMaxBet ? Number(bankerMaxBet) : undefined,
       pumpRate,
+      playerPumpRate,
     });
 
     // Deduct banker's pool from their balance
@@ -652,7 +654,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const roundBetsChron = [...roundBets].reverse();
     const winners = roundBetsChron.filter((b) => b.option === parsed.data.winnerOption);
     const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
-    const pumpRate = (round as any).pumpRate ?? 0;
+    const pumpRate = (round as any).pumpRate ?? 0;           // 上庄抽水率
+    const playerPumpRate = (round as any).playerPumpRate ?? 0; // 下庄抽水率
     const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
     const hasbanker = !!(round.bankerUserId && round.bankerMaxBet);
 
@@ -675,7 +678,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const gross = Math.floor(bet.amount * ratio);
         // 下庄抽水：只抽盈利部分
         const profit = gross - bet.amount;
-        const pump = profit > 0 ? Math.floor(profit * pumpRate / 100) : 0;
+        const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
         const fullPayout = gross - pump;
         // Cap payout by remaining banker fund
         const payout = Math.min(fullPayout, bankerFund);
@@ -694,7 +697,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!user) { betPayouts.set(bet.id, 0); continue; }
         const gross = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool) : 0;
         const profit = gross - bet.amount;
-        const pump = profit > 0 ? Math.floor(profit * pumpRate / 100) : 0;
+        const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
         const payout = Math.max(0, gross - pump);
         betPayouts.set(bet.id, payout);
         totalPayout += payout;
@@ -748,7 +751,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
       });
-      const pump = pumpRate > 0 ? `\n抽水 ${pumpRate}%  总派彩 ${totalPayout.toLocaleString()}` : `\n总派彩 ${totalPayout.toLocaleString()}`;
+      const pumpParts = [];
+      if (pumpRate > 0) pumpParts.push(`上庄抽水 ${pumpRate}%`);
+      if (playerPumpRate > 0) pumpParts.push(`下庄抽水 ${playerPumpRate}%`);
+      const pump = pumpParts.length > 0
+        ? `\n${pumpParts.join("  ")}  总派彩 ${totalPayout.toLocaleString()}`
+        : `\n总派彩 ${totalPayout.toLocaleString()}`;
       const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump + bankerReturnMsg;
       const summaryMsg = await storage.createMessage({
         roomId: req.params.id,

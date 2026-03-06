@@ -36,6 +36,7 @@ export default function RoomPage() {
   const [bankerOption, setBankerOption] = useState("");
   const [bankerMaxBet, setBankerMaxBet] = useState("");
   const [pumpRate, setPumpRate] = useState("");
+  const [playerPumpRate, setPlayerPumpRate] = useState("");
   const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -236,7 +237,7 @@ export default function RoomPage() {
   });
 
   const startRoundMutation = useMutation({
-    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; options?: object }) =>
+    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number; options?: object }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
     onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
@@ -473,18 +474,33 @@ export default function RoomPage() {
               <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs font-medium text-muted-foreground">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">抽水率%</span>
-                    <Input
-                      data-testid="input-pump-rate"
-                      type="number"
-                      min={0}
-                      max={50}
-                      value={pumpRate}
-                      onChange={e => setPumpRate(e.target.value)}
-                      placeholder="0"
-                      className="h-6 text-xs w-14 px-1.5"
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">上庄抽水%</span>
+                      <Input
+                        data-testid="input-pump-rate"
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={pumpRate}
+                        onChange={e => setPumpRate(e.target.value)}
+                        placeholder="0"
+                        className="h-6 text-xs w-12 px-1.5"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">下庄抽水%</span>
+                      <Input
+                        data-testid="input-player-pump-rate"
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={playerPumpRate}
+                        onChange={e => setPlayerPumpRate(e.target.value)}
+                        placeholder="0"
+                        className="h-6 text-xs w-12 px-1.5"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
@@ -534,10 +550,12 @@ export default function RoomPage() {
                     bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
                     bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
                     pumpRate: pumpRate ? Number(pumpRate) : undefined,
+                    playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
                     options: defaultOpts,
                   });
                   setOptionRatios({ A: "", B: "", C: "", D: "" });
                   setPumpRate("");
+                  setPlayerPumpRate("");
                 }}
               >
                 <Play className="w-3 h-3 mr-1" />
