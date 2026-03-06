@@ -699,14 +699,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (hasbanker) {
       const banker = await storage.getUser(round.bankerUserId);
       if (banker) {
-        let bankerReturn: number;
+        let bankerReturnGross: number;
         if (useFixedOdds) {
           // Remaining unused banker fund goes back
-          bankerReturn = bankerFund === Infinity ? 0 : Math.max(0, bankerFund);
+          bankerReturnGross = bankerFund === Infinity ? 0 : Math.max(0, bankerFund);
         } else {
           // Parimutuel: return full deposit since banker didn't fund payouts
-          bankerReturn = round.bankerMaxBet;
+          bankerReturnGross = round.bankerMaxBet;
         }
+        // Deduct pump rate from banker's return (upper side commission)
+        const bankerPump = Math.floor(bankerReturnGross * pumpRate / 100);
+        const bankerReturn = Math.max(0, bankerReturnGross - bankerPump);
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
