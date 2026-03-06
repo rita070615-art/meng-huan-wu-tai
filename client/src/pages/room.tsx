@@ -1081,10 +1081,15 @@ function ChatMessage({
   }
 
   if (isBet) {
+    const colonIdx = msg.content.search(/[:：]/);
+    const namePart = colonIdx >= 0 ? msg.content.slice(0, colonIdx) : null;
+    const restPart = colonIdx >= 0 ? msg.content.slice(colonIdx + 1) : msg.content;
     return (
       <div className="flex items-start">
         <div className="px-3 py-2 rounded-2xl rounded-tl-sm bg-muted/60 border border-border/40 text-sm font-semibold leading-snug" style={{ maxWidth: "75%" }}>
-          {msg.content}
+          {namePart && <span className="text-yellow-400">{namePart}</span>}
+          {namePart && ":"}
+          {restPart}
         </div>
       </div>
     );
