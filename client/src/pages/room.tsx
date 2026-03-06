@@ -24,7 +24,7 @@ export default function RoomPage() {
 
   const [messageText, setMessageText] = useState("");
   const [betAmount, setBetAmount] = useState("100");
-  const [selectedOption, setSelectedOption] = useState<string>("");
+  const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const [liveBets, setLiveBets] = useState<Bet[]>([]);
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [liveRound, setLiveRound] = useState<BetRoundWithBets | null | undefined>(undefined);
@@ -131,6 +131,7 @@ export default function RoomPage() {
         if (data.type === "BET_ROUND_STARTED") {
           setLiveRound({ ...data.round, bets: [] });
           setLiveBets([]);
+          setSelectedOptions(new Set());
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -141,6 +142,7 @@ export default function RoomPage() {
         if (data.type === "BET_ROUND_CLOSED") {
           setLiveRound(null);
           setPendingWinner(null);
+          setSelectedOptions(new Set());
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -213,7 +215,6 @@ export default function RoomPage() {
       apiRequest("POST", `/api/rooms/${roomId}/bets`, data),
     onSuccess: () => {
       toast({ title: "点餐成功！" });
-      setSelectedOption("");
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
     },
@@ -287,15 +288,35 @@ export default function RoomPage() {
   };
 
   const handleBet = () => {
-    if (!selectedOption) return toast({ title: "请选择菜单选项", variant: "destructive" });
+    if (selectedOptions.size === 0) return toast({ title: "请选择菜单选项", variant: "destructive" });
     const amt = parseInt(betAmount);
     if (!amt || amt < 1) return toast({ title: "请输入有效金额", variant: "destructive" });
-    setPendingBet({ option: selectedOption, amount: amt });
+    if (selectedOptions.size === 1) {
+      setPendingBet({ option: [...selectedOptions][0], amount: amt });
+    } else {
+      // Multi-option: submit all at once without confirmation dialog
+      const keys = [...selectedOptions];
+      const first = keys[0];
+      betMutation.mutate({ option: first, amount: amt }, {
+        onSuccess: () => {
+          // Submit remaining bets sequentially
+          const rest = keys.slice(1);
+          const submitNext = (idx: number) => {
+            if (idx >= rest.length) return;
+            apiRequest("POST", `/api/rooms/${roomId}/bets`, { option: rest[idx], amount: amt })
+              .then(() => submitNext(idx + 1))
+              .catch(() => {});
+          };
+          submitNext(0);
+          setSelectedOptions(new Set());
+        },
+      });
+    }
   };
 
   const confirmBet = () => {
     if (!pendingBet) return;
-    betMutation.mutate(pendingBet, { onSettled: () => setPendingBet(null) });
+    betMutation.mutate(pendingBet, { onSettled: () => { setPendingBet(null); setSelectedOptions(new Set()); } });
   };
 
   const currentRound = liveRound !== undefined ? liveRound : betRoundData;
@@ -791,16 +812,25 @@ export default function RoomPage() {
                     {options.map((opt) => {
                       const isBankerOpt = bankerOptionKey === opt.key && user?.id !== (currentRound as any)?.bankerUserId;
                       const alreadyBet = userBetOptions.has(opt.key);
+                      const isSelected = selectedOptions.has(opt.key);
                       return (
                         <button
                           key={opt.key}
                           data-testid={`button-bet-option-${opt.key}`}
-                          onClick={() => !isBankerOpt && setSelectedOption(opt.key)}
+                          onClick={() => {
+                            if (isBankerOpt) return;
+                            setSelectedOptions(prev => {
+                              const next = new Set(prev);
+                              if (next.has(opt.key)) next.delete(opt.key);
+                              else next.add(opt.key);
+                              return next;
+                            });
+                          }}
                           disabled={isBankerOpt}
                           className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-md border-2 transition-all relative ${
                             isBankerOpt
                               ? "border-border/40 bg-background/30 opacity-50 cursor-not-allowed"
-                              : selectedOption === opt.key
+                              : isSelected
                               ? "border-primary bg-primary/15 cursor-pointer"
                               : "border-border bg-background/60 cursor-pointer"
                           }`}
@@ -830,11 +860,11 @@ export default function RoomPage() {
                     <Button
                       data-testid="button-place-bet"
                       onClick={handleBet}
-                      disabled={betMutation.isPending || !selectedOption}
+                      disabled={betMutation.isPending || selectedOptions.size === 0}
                       size="sm"
                       className="h-9 px-4 shrink-0"
                     >
-                      点餐
+                      {selectedOptions.size > 1 ? `点餐 ×${selectedOptions.size}` : "点餐"}
                     </Button>
                   </div>
                   <div className="flex gap-1 flex-wrap">
