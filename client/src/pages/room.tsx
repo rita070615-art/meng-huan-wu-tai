@@ -132,6 +132,7 @@ export default function RoomPage() {
           setLiveRound({ ...data.round, bets: [] });
           setLiveBets([]);
           setSelectedOptions(new Set());
+          setDoubleMode(false);
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -143,6 +144,7 @@ export default function RoomPage() {
           setLiveRound(null);
           setPendingWinner(null);
           setSelectedOptions(new Set());
+          setDoubleMode(false);
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -244,8 +246,11 @@ export default function RoomPage() {
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
   });
 
+  const [doubleMode, setDoubleMode] = useState(false);
+
   const closeRoundMutation = useMutation({
-    mutationFn: (winnerOption: string) => apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption }),
+    mutationFn: ({ winnerOption, double: dbl }: { winnerOption: string; double: boolean }) =>
+      apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { winnerOption, double: dbl }),
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
   });
 
@@ -614,13 +619,22 @@ export default function RoomPage() {
                         <span className="text-xs font-semibold" style={{ color: winOpt?.color }}>
                           确认开奖：{winOpt?.label} 获胜？
                         </span>
+                        <button
+                          type="button"
+                          data-testid="button-admin-toggle-double"
+                          onClick={() => setDoubleMode(v => !v)}
+                          className={`h-6 px-2 text-xs rounded border transition-colors font-medium ${doubleMode ? "bg-orange-500 border-orange-500 text-white" : "border-orange-400 text-orange-400 hover:bg-orange-400/10"}`}
+                        >
+                          {doubleMode ? "✓ 翻倍" : "翻倍"}
+                        </button>
                         <Button
                           size="sm"
                           className="h-6 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
                           disabled={closeRoundMutation.isPending}
                           onClick={() => {
-                            closeRoundMutation.mutate(pendingWinner);
+                            closeRoundMutation.mutate({ winnerOption: pendingWinner!, double: doubleMode });
                             setPendingWinner(null);
+                            setDoubleMode(false);
                             setAdminPanelOpen(false);
                           }}
                           data-testid="button-admin-confirm-winner"
@@ -631,7 +645,7 @@ export default function RoomPage() {
                           size="sm"
                           variant="ghost"
                           className="h-6 px-2 text-xs text-muted-foreground"
-                          onClick={() => setPendingWinner(null)}
+                          onClick={() => { setPendingWinner(null); setDoubleMode(false); }}
                           data-testid="button-admin-cancel-winner"
                         >
                           取消

@@ -641,9 +641,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round) return res.status(404).json({ error: "No active round" });
 
-    const schema = z.object({ winnerOption: z.string() });
+    const schema = z.object({ winnerOption: z.string(), double: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid winner" });
+
+    const doubleMultiplier = parsed.data.double ? 2 : 1;
 
     const closed = await storage.closeBetRound(round.id, parsed.data.winnerOption);
     const roundBets = await storage.getBetsForRound(round.id);
@@ -654,8 +656,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const roundBetsChron = [...roundBets].reverse();
     const winners = roundBetsChron.filter((b) => b.option === parsed.data.winnerOption);
     const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
-    const pumpRate = (round as any).pumpRate ?? 0;           // 上庄抽水率
-    const playerPumpRate = (round as any).playerPumpRate ?? 0; // 下庄抽水率
+    const pumpRate = (round as any).pumpRate ?? 0;           // 厨房服务费率
+    const playerPumpRate = (round as any).playerPumpRate ?? 0; // 平台服务费率
     const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
     const hasbanker = !!(round.bankerUserId && round.bankerMaxBet);
 
@@ -675,7 +677,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const bet of winners) {
         const user = await storage.getUser(bet.userId);
         if (!user) { betPayouts.set(bet.id, 0); continue; }
-        const gross = Math.floor(bet.amount * ratio);
+        const gross = Math.floor(bet.amount * ratio * doubleMultiplier);
         // 下庄抽水：只抽盈利部分
         const profit = gross - bet.amount;
         const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
@@ -695,7 +697,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const bet of winners) {
         const user = await storage.getUser(bet.userId);
         if (!user) { betPayouts.set(bet.id, 0); continue; }
-        const gross = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool) : 0;
+        const gross = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool * doubleMultiplier) : 0;
         const profit = gross - bet.amount;
         const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
         const payout = Math.max(0, gross - pump);
@@ -744,9 +746,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Winner but banker ran out of funds
             suffix = " ✓ 庄家不足";
           } else if (useFixedOdds && ratio) {
-            suffix = ` ✓ × ${ratio}赔`;
+            const effectiveRatio = ratio * doubleMultiplier;
+            suffix = doubleMultiplier > 1 ? ` ✓ × ${effectiveRatio}赔（翻倍）` : ` ✓ × ${ratio}赔`;
           } else {
-            suffix = " ✓ 赢";
+            suffix = doubleMultiplier > 1 ? " ✓ 赢（翻倍）" : " ✓ 赢";
           }
         }
         return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
