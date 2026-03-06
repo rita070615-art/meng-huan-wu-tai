@@ -598,7 +598,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 roomId,
                 userId: shillId,
                 username: shillDisplayName,
-                content: `点了 ${shillOptLabel} × ${amount.toLocaleString()}`,
+                content: `${shillDisplayName}：${shillOptLabel}${amount.toLocaleString()}`,
                 type: "bet",
               });
               broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
@@ -761,7 +761,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       roomId: req.params.id,
       userId: user.id,
       username: displayName,
-      content: `点了 ${optLabel} × ${parsed.data.amount.toLocaleString()}`,
+      content: `${displayName}：${optLabel}${parsed.data.amount.toLocaleString()}`,
       type: "bet",
     });
     broadcast(req.params.id, { type: "MESSAGE", message: betMsg });

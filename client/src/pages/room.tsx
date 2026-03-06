@@ -1064,9 +1064,8 @@ function ChatMessage({
 
   if (isBet) {
     return (
-      <div className="flex flex-col items-start">
-        <span className="text-xs text-muted-foreground mb-0.5 ml-1">{msg.username}</span>
-        <div className="max-w-[75%] px-3 py-2 rounded-2xl rounded-tl-sm bg-muted/60 border border-border/40 text-sm leading-snug">
+      <div className="flex items-start">
+        <div className="px-3 py-2 rounded-2xl rounded-tl-sm bg-muted/60 border border-border/40 text-sm font-semibold leading-snug" style={{ maxWidth: "75%" }}>
           {msg.content}
         </div>
       </div>
