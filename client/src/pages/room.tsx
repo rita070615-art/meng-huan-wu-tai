@@ -445,7 +445,7 @@ export default function RoomPage() {
                 <span className="text-xs text-muted-foreground">（主厨可选，直接点"开启点餐"可跳过）</span>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-xs text-muted-foreground flex items-center gap-1">
                     选主厨
                     <button type="button" onClick={() => refetchOnlineUsers()} className="text-[10px] text-primary hover:underline">刷新</button>
@@ -454,7 +454,7 @@ export default function RoomPage() {
                     data-testid="select-banker-user"
                     value={bankerUserId}
                     onChange={e => setBankerUserId(e.target.value)}
-                    className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground"
+                    className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground truncate"
                   >
                     <option value="">无主厨</option>
                     {(onlineUsers || []).map(u => (
@@ -462,14 +462,14 @@ export default function RoomPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-xs text-muted-foreground">主厨属性</label>
                   <select
                     data-testid="select-banker-option"
                     value={bankerOption}
                     onChange={e => setBankerOption(e.target.value)}
                     disabled={!bankerUserId}
-                    className="w-full mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
+                    className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
                   >
                     <option value="">选择属性</option>
                     {[{key:"A",label:"力量"},{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"D",label:"耐力"}].map(o => (
@@ -477,7 +477,7 @@ export default function RoomPage() {
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-xs text-muted-foreground">主厨上限</label>
                   <Input
                     data-testid="input-banker-max-bet"
