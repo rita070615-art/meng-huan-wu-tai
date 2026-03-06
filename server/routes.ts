@@ -569,7 +569,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               const activeRound = await storage.getActiveBetRound(roomId);
               if (!activeRound || activeRound.id !== roundId) return;
 
-              const amount = Math.floor(Math.random() * (botCfg.maxAmount - botCfg.minAmount + 1)) + botCfg.minAmount;
+              const minStep = Math.max(1, Math.ceil(botCfg.minAmount / 50));
+              const maxStep = Math.max(minStep, Math.floor(botCfg.maxAmount / 50));
+              const amount = (minStep + Math.floor(Math.random() * (maxStep - minStep + 1))) * 50;
               if (shillBalance < amount) {
                 const warnMsg = await storage.createMessage({
                   roomId,
