@@ -752,8 +752,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
       });
       const pumpParts = [];
-      if (pumpRate > 0) pumpParts.push(`上庄抽水 ${pumpRate}%`);
-      if (playerPumpRate > 0) pumpParts.push(`下庄抽水 ${playerPumpRate}%`);
+      if (pumpRate > 0) pumpParts.push(`厨房服务费 ${pumpRate}%`);
+      if (playerPumpRate > 0) pumpParts.push(`平台服务费 ${playerPumpRate}%`);
       const pump = pumpParts.length > 0
         ? `\n${pumpParts.join("  ")}  本轮出餐数量 ${roundBetsChron.length}`
         : `\n本轮出餐数量 ${roundBetsChron.length}`;

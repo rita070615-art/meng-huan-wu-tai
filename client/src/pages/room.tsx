@@ -497,7 +497,7 @@ export default function RoomPage() {
                   <span className="text-xs font-medium text-muted-foreground">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></span>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">上庄抽水%</span>
+                      <span className="text-[10px] text-muted-foreground">厨房服务费%</span>
                       <Input
                         data-testid="input-pump-rate"
                         type="number"
@@ -510,7 +510,7 @@ export default function RoomPage() {
                       />
                     </div>
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">下庄抽水%</span>
+                      <span className="text-[10px] text-muted-foreground">平台服务费%</span>
                       <Input
                         data-testid="input-player-pump-rate"
                         type="number"
