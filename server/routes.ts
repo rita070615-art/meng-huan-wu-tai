@@ -648,44 +648,68 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const options = round.options as Array<{ key: string; label: string; color: string; ratio?: number }>;
     const winnerOpt = options.find((o) => o.key === parsed.data.winnerOption);
-    const winners = roundBets.filter((b) => b.option === parsed.data.winnerOption);
+    // roundBets comes desc(createdAt), reverse for chronological (oldest = highest priority)
+    const roundBetsChron = [...roundBets].reverse();
+    const winners = roundBetsChron.filter((b) => b.option === parsed.data.winnerOption);
     const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
     const pumpRate = (round as any).pumpRate ?? 0;
     const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
+    const hasbanker = !!(round.bankerUserId && round.bankerMaxBet);
+
+    // Track remaining banker funds (only relevant in fixed-odds with banker)
+    let bankerFund = (useFixedOdds && hasbanker) ? (round.bankerMaxBet as number) : Infinity;
 
     let totalPayout = 0;
-    for (const bet of winners) {
-      const user = await storage.getUser(bet.userId);
-      if (!user) continue;
-      let payout: number;
-      if (useFixedOdds) {
-        const ratio = winnerOpt?.ratio ?? 1;
+    // Track per-bet actual payout for summary (betId -> payout)
+    const betPayouts = new Map<string, number>();
+
+    if (useFixedOdds) {
+      const ratio = winnerOpt?.ratio ?? 1;
+      for (const bet of winners) {
+        const user = await storage.getUser(bet.userId);
+        if (!user) { betPayouts.set(bet.id, 0); continue; }
         const gross = Math.floor(bet.amount * ratio);
         const pump = Math.floor(gross * pumpRate / 100);
-        payout = gross - pump;
-      } else {
-        const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
-        const fee = Math.floor(totalPool * pumpRate / 100);
-        payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * (totalPool - fee)) : 0;
+        const fullPayout = gross - pump;
+        // Cap payout by remaining banker fund
+        const payout = Math.min(fullPayout, bankerFund);
+        betPayouts.set(bet.id, payout);
+        if (payout > 0) {
+          totalPayout += payout;
+          bankerFund -= payout;
+          await storage.updateUserBalance(bet.userId, user.balance + payout);
+        }
       }
-      totalPayout += payout;
-      await storage.updateUserBalance(bet.userId, user.balance + payout);
+    } else {
+      // Parimutuel: share pool proportionally among winners
+      const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
+      const fee = Math.floor(totalPool * pumpRate / 100);
+      for (const bet of winners) {
+        const user = await storage.getUser(bet.userId);
+        if (!user) { betPayouts.set(bet.id, 0); continue; }
+        const payout = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * (totalPool - fee)) : 0;
+        betPayouts.set(bet.id, payout);
+        totalPayout += payout;
+        await storage.updateUserBalance(bet.userId, user.balance + payout);
+      }
     }
 
     // Return remainder to banker after paying winners
     let bankerReturnMsg = "";
-    if (round.bankerUserId && round.bankerMaxBet) {
+    if (hasbanker) {
       const banker = await storage.getUser(round.bankerUserId);
       if (banker) {
         let bankerReturn: number;
         if (useFixedOdds) {
-          // Fixed odds: banker funded payouts; return whatever's left
-          bankerReturn = Math.max(0, round.bankerMaxBet - totalPayout);
+          // Remaining unused banker fund goes back
+          bankerReturn = bankerFund === Infinity ? 0 : Math.max(0, bankerFund);
         } else {
-          // Parimutuel: banker just capped total bets, return full deposit
+          // Parimutuel: return full deposit since banker didn't fund payouts
           bankerReturn = round.bankerMaxBet;
         }
-        await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
+        if (bankerReturn > 0) {
+          await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
+        }
         const bankerName = round.bankerNickname || banker.nickname || banker.username;
         bankerReturnMsg = `\n庄家 ${bankerName} 返还：${bankerReturn.toLocaleString()}`;
       }
@@ -697,17 +721,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       type: "system",
     });
 
-    // Build bet summary in betting-time order (oldest first)
-    const allBets = [...roundBets].reverse();
-    if (allBets.length > 0) {
-      const lines = allBets.map((b) => {
+    // Build bet summary in chronological order (oldest first = highest priority)
+    if (roundBetsChron.length > 0) {
+      const lines = roundBetsChron.map((b) => {
         const optLabel = options.find(o => o.key === b.option)?.label || b.option;
         const name = b.nickname || b.username;
         const isWinner = b.option === parsed.data.winnerOption;
         const ratio = winnerOpt?.ratio;
-        const suffix = isWinner
-          ? (useFixedOdds && ratio ? ` ✓ × ${ratio}赔` : " ✓ 赢")
-          : " ✗";
+        let suffix: string;
+        if (!isWinner) {
+          suffix = " ✗";
+        } else {
+          const actualPayout = betPayouts.get(b.id);
+          if (actualPayout != null && actualPayout === 0) {
+            // Winner but banker ran out of funds
+            suffix = " ✓ 庄家不足";
+          } else if (useFixedOdds && ratio) {
+            suffix = ` ✓ × ${ratio}赔`;
+          } else {
+            suffix = " ✓ 赢";
+          }
+        }
         return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
       });
       const pump = pumpRate > 0 ? `\n抽水 ${pumpRate}%  总派彩 ${totalPayout.toLocaleString()}` : `\n总派彩 ${totalPayout.toLocaleString()}`;
