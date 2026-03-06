@@ -619,14 +619,16 @@ export default function RoomPage() {
                         <span className="text-xs font-semibold" style={{ color: winOpt?.color }}>
                           确认开奖：{winOpt?.label} 获胜？
                         </span>
-                        <button
-                          type="button"
-                          data-testid="button-admin-toggle-double"
-                          onClick={() => setDoubleMode(v => !v)}
-                          className={`h-6 px-2 text-xs rounded border transition-colors font-medium ${doubleMode ? "bg-orange-500 border-orange-500 text-white" : "border-orange-400 text-orange-400 hover:bg-orange-400/10"}`}
-                        >
-                          {doubleMode ? "✓ 翻倍" : "翻倍"}
-                        </button>
+                        {currentRound.bankerUserId && (
+                          <button
+                            type="button"
+                            data-testid="button-admin-toggle-double"
+                            onClick={() => setDoubleMode(v => !v)}
+                            className={`h-6 px-2 text-xs rounded border transition-colors font-medium ${doubleMode ? "bg-orange-500 border-orange-500 text-white" : "border-orange-400 text-orange-400 hover:bg-orange-400/10"}`}
+                          >
+                            {doubleMode ? "✓ 庄翻倍" : "庄翻倍"}
+                          </button>
+                        )}
                         <Button
                           size="sm"
                           className="h-6 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
