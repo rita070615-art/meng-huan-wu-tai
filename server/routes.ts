@@ -755,8 +755,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (pumpRate > 0) pumpParts.push(`上庄抽水 ${pumpRate}%`);
       if (playerPumpRate > 0) pumpParts.push(`下庄抽水 ${playerPumpRate}%`);
       const pump = pumpParts.length > 0
-        ? `\n${pumpParts.join("  ")}  总派彩 ${totalPayout.toLocaleString()}`
-        : `\n总派彩 ${totalPayout.toLocaleString()}`;
+        ? `\n${pumpParts.join("  ")}  本轮出餐数量 ${roundBetsChron.length}`
+        : `\n本轮出餐数量 ${roundBetsChron.length}`;
       const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump + bankerReturnMsg;
       const summaryMsg = await storage.createMessage({
         roomId: req.params.id,
