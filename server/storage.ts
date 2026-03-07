@@ -69,6 +69,7 @@ export interface IStorage {
   setUserShillRoom(id: string, shillRoomId: string | null): Promise<User | undefined>;
   updateUserPassword(id: string, password: string): Promise<User | undefined>;
   enableTotp(id: string, secret: string): Promise<User | undefined>;
+  adminAdjustBalance(id: string, newBalance: number): Promise<User | undefined>;
 
   // Private Messages
   createPrivateMessage(data: { userId: string; userUsername: string; userNickname?: string | null; adminId?: string; adminUsername?: string; content: string; isFromAdmin: boolean }): Promise<PrivateMessage>;
@@ -98,13 +99,15 @@ export class DbStorage implements IStorage {
 
   async createUser(user: InsertUser & { role?: string; balance?: number; nickname?: string }): Promise<User> {
     const id = randomUUID();
+    const initialBalance = user.balance ?? 0;
     const result = await db.insert(users).values({
       id,
       username: user.username,
       nickname: user.nickname || null,
       password: user.password,
       role: user.role || "user",
-      balance: user.balance ?? 0,
+      balance: initialBalance,
+      totalDeposits: initialBalance,
     }).returning();
     return result[0];
   }
@@ -362,6 +365,20 @@ export class DbStorage implements IStorage {
 
   async enableTotp(id: string, secret: string): Promise<User | undefined> {
     const result = await db.update(users).set({ totpSecret: secret, totpEnabled: true }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async adminAdjustBalance(id: string, newBalance: number): Promise<User | undefined> {
+    const current = await this.getUser(id);
+    if (!current) return undefined;
+    const delta = newBalance - current.balance;
+    const updates: Record<string, unknown> = { balance: newBalance };
+    if (delta > 0) {
+      updates.totalDeposits = (current.totalDeposits ?? 0) + delta;
+    } else if (delta < 0) {
+      updates.totalWithdrawals = (current.totalWithdrawals ?? 0) + Math.abs(delta);
+    }
+    const result = await db.update(users).set(updates as any).where(eq(users.id, id)).returning();
     return result[0];
   }
 

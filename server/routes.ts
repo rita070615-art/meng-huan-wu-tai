@@ -1216,7 +1216,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid balance" });
 
-    const user = await storage.updateUserBalance(req.params.id, parsed.data.balance);
+    const user = await storage.adminAdjustBalance(req.params.id, parsed.data.balance);
     if (!user) return res.status(404).json({ error: "User not found" });
     res.json({ id: user.id, username: user.username, balance: user.balance });
   });
@@ -1401,15 +1401,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/admin/export/excel", requireAdmin, async (req, res) => {
-    const rounds = await storage.getAllBetRoundsWithBets();
+    const [rounds, allUsers] = await Promise.all([
+      storage.getAllBetRoundsWithBets(),
+      storage.getAllUsers(),
+    ]);
 
-    // Sheet 1: Round summary
+    // ── Sheet 1: 玩家统计 ─────────────────────────────────────────
+    // Per-user bet stats from closed rounds
+    const betStatsByUser = new Map<string, { count: number; turnover: number }>();
+    for (const r of rounds) {
+      if (r.status !== "closed") continue;
+      for (const b of r.bets) {
+        const s = betStatsByUser.get(b.userId) || { count: 0, turnover: 0 };
+        s.count += 1;
+        s.turnover += b.amount;
+        betStatsByUser.set(b.userId, s);
+      }
+    }
+
+    // Active/paused rounds for banker locked amount
+    const activeBankerLocked = new Map<string, number>();
+    for (const r of rounds) {
+      if ((r.status === "open" || r.status === "paused") && r.bankerUserId && r.bankerMaxBet) {
+        const carryOver = (r as any).carryOver ?? 0;
+        const locked = Math.max(0, (r.bankerMaxBet as number) - carryOver);
+        activeBankerLocked.set(r.bankerUserId, (activeBankerLocked.get(r.bankerUserId) || 0) + locked);
+      }
+    }
+
+    const playerRows = allUsers
+      .filter(u => !u.isShill)
+      .map(u => {
+        const stats = betStatsByUser.get(u.id) || { count: 0, turnover: 0 };
+        const bankerLocked = activeBankerLocked.get(u.id) || 0;
+        const totalDeposits = (u as any).totalDeposits ?? 0;
+        const totalWithdrawals = (u as any).totalWithdrawals ?? 0;
+        const totalAssets = u.balance + bankerLocked;
+        const totalProfit = totalAssets + totalWithdrawals - totalDeposits;
+        return {
+          "玩家": u.nickname || u.username,
+          "积分数": u.balance,
+          "桌上分数": bankerLocked,
+          "总盈利": totalProfit,
+          "总充值": totalDeposits,
+          "下注数": stats.count,
+          "总提分数": totalWithdrawals,
+          "总流水": stats.turnover,
+        };
+      })
+      .sort((a, b) => b["积分数"] - a["积分数"]);
+
+    // ── Sheet 2: 轮次汇总 ─────────────────────────────────────────
     const summaryRows = rounds.map(r => {
       const opts = (r.options as Array<{ key: string; label: string }>) || [];
       const totalPool = r.bets.reduce((s, b) => s + b.amount, 0);
-      const winnerBets = r.winnerOption ? r.bets.filter(b => b.option === r.winnerOption) : [];
-      const winnerPool = winnerBets.reduce((s, b) => s + b.amount, 0);
-      const platformFee = r.winnerOption && winnerPool > 0 ? Math.floor(totalPool * 0.1) : 0;
       const winnerLabel = r.winnerOption ? (opts.find(o => o.key === r.winnerOption)?.label || r.winnerOption) : "未开奖";
       return {
         "房间": r.roomName,
@@ -1422,41 +1467,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         "庄家上限": r.bankerMaxBet || "",
         "获胜属性": winnerLabel,
         "总下注池": totalPool,
-        "平台抽成(10%)": platformFee,
         "参与人数": new Set(r.bets.map(b => b.userId)).size,
         "下注笔数": r.bets.length,
       };
     });
 
-    // Sheet 2: Bet details
+    // ── Sheet 3: 下注明细 ─────────────────────────────────────────
     const betRows = rounds.flatMap(r => {
       const opts = (r.options as Array<{ key: string; label: string }>) || [];
-      const totalPool = r.bets.reduce((s, b) => s + b.amount, 0);
-      const winnerPool = r.winnerOption ? r.bets.filter(b => b.option === r.winnerOption).reduce((s, b) => s + b.amount, 0) : 0;
       return r.bets.map(b => {
-        const isWinner = b.option === r.winnerOption;
-        const payout = isWinner && winnerPool > 0 ? Math.floor((b.amount / winnerPool) * totalPool * 0.9) : 0;
-        const profit = isWinner ? payout - b.amount : -b.amount;
         const optLabel = opts.find(o => o.key === b.option)?.label || b.option;
         return {
           "房间": r.roomName,
-          "轮次ID": r.id,
           "时间": b.createdAt ? new Date(b.createdAt).toLocaleString("zh-CN") : "",
           "用户昵称": b.nickname || b.username,
           "账号": b.username,
           "下注属性": optLabel,
           "下注金额": b.amount,
-          "是否获胜": isWinner ? "✓" : "",
-          "返还积分": payout,
-          "盈亏": profit,
           "庄家": r.bankerNickname || "",
         };
       });
     });
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "轮次汇总");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(betRows), "下注明细");
+
+    // Style helper: header row bold + colored
+    const makeSheet = (data: object[], sheetName: string) => {
+      const ws = XLSX.utils.json_to_sheet(data);
+      // Set column widths
+      if (data.length > 0) {
+        ws["!cols"] = Object.keys(data[0]).map(() => ({ wch: 14 }));
+      }
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    };
+
+    makeSheet(playerRows, "玩家统计");
+    makeSheet(summaryRows, "轮次汇总");
+    makeSheet(betRows, "下注明细");
 
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
     res.setHeader("Content-Disposition", `attachment; filename="report_${Date.now()}.xlsx"`);
