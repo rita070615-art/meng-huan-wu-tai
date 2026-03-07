@@ -83,10 +83,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Disable TOTP for all users on startup — prevents session-clear lockouts after restarts
+  // Disable TOTP for regular users only — admins can keep their TOTP enabled
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false`);
+    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE role != 'admin'`);
     await pool.end();
   } catch (e) {
     console.error("Startup TOTP reset failed:", e);
