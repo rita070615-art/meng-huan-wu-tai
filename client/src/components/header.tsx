@@ -142,22 +142,33 @@ export default function Header({ showBack, title }: HeaderProps) {
               </>
             )}
             {isAdmin && (
-              <Link href="/admin">
+              <>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative"
-                  data-testid="button-admin-shortcut"
-                  title="管理后台"
+                  data-testid="button-profile-admin"
+                  onClick={() => setLocation("/profile")}
+                  title="我的资料"
                 >
-                  <LayoutDashboard className="w-5 h-5" />
-                  {adminUnread > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold px-0.5">
-                      {adminUnread > 9 ? "9+" : adminUnread}
-                    </span>
-                  )}
+                  <UserCircle className="w-5 h-5" />
                 </Button>
-              </Link>
+                <Link href="/admin">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative"
+                    data-testid="button-admin-shortcut"
+                    title="管理后台"
+                  >
+                    <LayoutDashboard className="w-5 h-5" />
+                    {adminUnread > 0 && (
+                      <span className="absolute top-1 right-1 min-w-[14px] h-[14px] rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-bold px-0.5">
+                        {adminUnread > 9 ? "9+" : adminUnread}
+                      </span>
+                    )}
+                  </Button>
+                </Link>
+              </>
             )}
             <div
               className="flex items-center gap-1.5 bg-card border border-card-border rounded-md px-3 py-1.5"
