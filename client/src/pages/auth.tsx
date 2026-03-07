@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation, Redirect } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Shield, CheckCircle2, MessageCircle, Send, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Shield, CheckCircle2, MessageCircle, Send, X, ShieldCheck, ShieldAlert } from "lucide-react";
 import logoImg from "@assets/梦幻舞台.png";
 
 type View = "login" | "register" | "forgot";
@@ -31,13 +32,21 @@ export default function AuthPage() {
   const [contactOpen, setContactOpen] = useState(false);
   const [contactMsg, setContactMsg] = useState("");
   const [contactSentCount, setContactSentCount] = useState(0);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const isRegisterRef = useRef(false);
 
   const authMutation = useMutation({
-    mutationFn: (data: { username: string; password: string; nickname?: string }) =>
-      apiRequest("POST", view === "login" ? "/api/auth/login" : "/api/auth/register", data),
+    mutationFn: (data: { username: string; password: string; nickname?: string }) => {
+      isRegisterRef.current = view === "register";
+      return apiRequest("POST", view === "login" ? "/api/auth/login" : "/api/auth/register", data);
+    },
     onSuccess: (data) => {
       queryClient.setQueryData(["/api/auth/me"], data);
-      setLocation("/");
+      if (isRegisterRef.current) {
+        setShowSecurityModal(true);
+      } else {
+        setLocation("/");
+      }
     },
     onError: (e: Error) => {
       toast({ title: "错误", description: e.message, variant: "destructive" });
@@ -389,6 +398,63 @@ export default function AuthPage() {
           )}
         </div>
       </div>
+
+      {/* Security recommendation modal shown after registration */}
+      <Dialog open={showSecurityModal} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5 text-amber-400" />
+              </div>
+              <DialogTitle className="text-base">账户安全提醒</DialogTitle>
+            </div>
+            <DialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
+                <p>
+                  尊敬的用户，您的账户已成功创建。为确保您的账户及资产安全，我们强烈建议您立即开启
+                  <span className="text-foreground font-medium">双重身份验证（2FA）</span>。
+                </p>
+                <div className="bg-muted/60 rounded-md p-3 space-y-1.5 text-xs">
+                  <p className="flex items-start gap-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                    <span>有效防止账户被未授权访问，保障您的积分与隐私安全</span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                    <span>一旦账户遭遇异常登录，双重验证将作为最后一道防线</span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-green-400 mt-0.5 shrink-0" />
+                    <span>忘记密码时，双重验证码是唯一的账户找回凭证</span>
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground/80">
+                  如因未绑定双重验证而导致账户无法找回，平台将无法提供任何账户恢复服务，敬请知悉。
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 mt-2">
+            <Button
+              data-testid="button-setup-2fa-now"
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => { setShowSecurityModal(false); setLocation("/setup-totp"); }}
+            >
+              <ShieldCheck className="w-4 h-4 mr-2" />
+              立即开启双重验证
+            </Button>
+            <Button
+              data-testid="button-setup-2fa-later"
+              variant="outline"
+              className="w-full"
+              onClick={() => { setShowSecurityModal(false); setLocation("/"); }}
+            >
+              稍后再说
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
