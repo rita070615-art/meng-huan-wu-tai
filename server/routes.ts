@@ -605,11 +605,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.updateUserBalance(bankerUserId, banker.balance - newAmount);
     }
 
-    // Fire webhook: 上庄抽水
+    // Fire webhook: 上庄抽水 → URL1
     const pumpDeductedStart = Math.floor(newAmount * pumpRate / 100);
     if (pumpDeductedStart > 0 || exitPumpRate > 0) {
       const wsCfg = await storage.getBotSettings();
-      const whUrls = [(wsCfg as any).webhookUrl1, (wsCfg as any).webhookUrl2];
+      const whUrls = [(wsCfg as any).webhookUrl1];
       fireWebhooks(whUrls, {
         type: "上庄抽水",
         timestamp: new Date().toISOString(),
@@ -911,10 +911,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
-        // Fire webhook: 下庄抽水
+        // Fire webhook: 下庄抽水 → URL1
         if (exitPumpDeducted > 0) {
           storage.getBotSettings().then(cfg => {
-            fireWebhooks([(cfg as any).webhookUrl1, (cfg as any).webhookUrl2], {
+            fireWebhooks([(cfg as any).webhookUrl1], {
               type: "下庄抽水",
               timestamp: new Date().toISOString(),
               player: bankerNameDisplay,
@@ -1272,7 +1272,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const adminName = req.session.nickname || req.session.username || "管理员";
       const playerName = user.nickname || user.username;
       storage.getBotSettings().then(cfg => {
-        fireWebhooks([(cfg as any).webhookUrl1, (cfg as any).webhookUrl2], {
+        const url = delta > 0 ? (cfg as any).webhookUrl2 : (cfg as any).webhookUrl3;
+        fireWebhooks([url], {
           type: delta > 0 ? "充值" : "提现",
           timestamp: new Date().toISOString(),
           admin: adminName,
@@ -1422,6 +1423,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       maxAmount: z.number().int().min(1),
       webhookUrl1: z.string().max(500).optional(),
       webhookUrl2: z.string().max(500).optional(),
+      webhookUrl3: z.string().max(500).optional(),
     }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });

@@ -1129,6 +1129,7 @@ function BotAdmin() {
   const [maxAmount, setMaxAmount] = useState("");
   const [webhookUrl1, setWebhookUrl1] = useState("");
   const [webhookUrl2, setWebhookUrl2] = useState("");
+  const [webhookUrl3, setWebhookUrl3] = useState("");
 
   const { data: settings, isLoading: settingsLoading } = useQuery<BotSettings>({
     queryKey: ["/api/admin/bot-settings"],
@@ -1138,6 +1139,7 @@ function BotAdmin() {
     if (settings) {
       setWebhookUrl1((settings as any).webhookUrl1 ?? "");
       setWebhookUrl2((settings as any).webhookUrl2 ?? "");
+      setWebhookUrl3((settings as any).webhookUrl3 ?? "");
     }
   }, [settings?.id]);
 
@@ -1234,8 +1236,9 @@ function BotAdmin() {
       enabled: settings.enabled,
       minAmount: settings.minAmount,
       maxAmount: settings.maxAmount,
-      webhookUrl1: webhookUrl1 !== "" ? webhookUrl1 : (settings as any).webhookUrl1 ?? "",
-      webhookUrl2: webhookUrl2 !== "" ? webhookUrl2 : (settings as any).webhookUrl2 ?? "",
+      webhookUrl1,
+      webhookUrl2,
+      webhookUrl3,
     } as any);
   };
 
@@ -1333,24 +1336,35 @@ function BotAdmin() {
         </p>
         <div className="space-y-3">
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Webhook URL 1</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">上庄 / 下庄抽水 URL</Label>
             <Input
               data-testid="input-webhook-url-1"
               type="url"
               value={webhookUrl1}
               onChange={e => setWebhookUrl1(e.target.value)}
-              placeholder="https://example.com/webhook"
+              placeholder="https://example.com/webhook/pump"
               className="h-9 text-sm font-mono"
             />
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Webhook URL 2</Label>
+            <Label className="text-xs text-muted-foreground mb-1 block">充值 URL</Label>
             <Input
               data-testid="input-webhook-url-2"
               type="url"
               value={webhookUrl2}
               onChange={e => setWebhookUrl2(e.target.value)}
-              placeholder="https://example.com/webhook2"
+              placeholder="https://example.com/webhook/deposit"
+              className="h-9 text-sm font-mono"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1 block">提现 URL</Label>
+            <Input
+              data-testid="input-webhook-url-3"
+              type="url"
+              value={webhookUrl3}
+              onChange={e => setWebhookUrl3(e.target.value)}
+              placeholder="https://example.com/webhook/withdraw"
               className="h-9 text-sm font-mono"
             />
           </div>
