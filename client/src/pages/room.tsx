@@ -927,7 +927,7 @@ export default function RoomPage() {
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   {currentRound.status === "paused"
-                    ? <span className="font-semibold text-amber-500">{capReached ? "满额等待开奖" : "已暂停点餐"}</span>
+                    ? <span className="font-semibold text-amber-500">{capReached ? "点餐订单已满" : "已暂停点餐"}</span>
                     : <span className="font-semibold text-primary">菜单进行中</span>
                   }
                   {bankerName && (
@@ -993,7 +993,7 @@ export default function RoomPage() {
               ) : currentRound.status === "paused" ? (
                 <div className="text-center text-xs py-2 font-medium">
                   {capReached
-                    ? <span className="text-green-500">✅ 投注已满额，等待管理员开奖</span>
+                    ? <span className="text-green-500">✅ 点餐订单已满。等待厨房出餐</span>
                     : <span className="text-amber-500">点餐暂停中，请稍候...</span>
                   }
                 </div>

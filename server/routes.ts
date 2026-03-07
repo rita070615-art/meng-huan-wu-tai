@@ -646,7 +646,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                     const paused = await storage.pauseBetRound(roundId);
                     const capMsg = await storage.createMessage({
                       roomId,
-                      content: `📢 投注已满额（${sEffCap2.toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+                      content: `📢 点餐订单已满（${sEffCap2.toLocaleString()} 积分）。等待厨房出餐。`,
                       type: "system",
                     });
                     broadcast(roomId, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
@@ -1034,7 +1034,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const paused = await storage.pauseBetRound(round.id);
         const capMsg = await storage.createMessage({
           roomId: req.params.id,
-          content: `📢 投注已满额（${effectiveCap2.toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+          content: `📢 点餐订单已满（${effectiveCap2.toLocaleString()} 积分）。等待厨房出餐。`,
           type: "system",
         });
         broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
