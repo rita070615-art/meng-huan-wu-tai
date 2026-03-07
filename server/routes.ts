@@ -952,6 +952,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate });
+
+    // Post a balance board: every user currently connected to this room + shills assigned here
+    try {
+      const roomId = req.params.id;
+      const now = Date.now();
+      // Unique user IDs from active WebSocket connections in this room (active within 45s)
+      const connectedIds = new Set<string>();
+      wsClients.forEach((c) => {
+        if (c.roomId === roomId && c.ws.readyState === WebSocket.OPEN && now - c.lastActivity < 45000) {
+          connectedIds.add(c.userId);
+        }
+      });
+      // Also include shills assigned to this room (or all rooms)
+      const allUsers = await storage.getAllUsers();
+      const shillsHere = allUsers.filter(u => u.isShill && (!(u as any).shillRoomId || (u as any).shillRoomId === roomId));
+      shillsHere.forEach(u => connectedIds.add(u.id));
+
+      if (connectedIds.size > 0) {
+        // Fetch fresh balances for all these users
+        const balanceLines: string[] = [];
+        for (const uid of connectedIds) {
+          const u = await storage.getUser(uid);
+          if (!u) continue;
+          const label = u.nickname || u.username;
+          const tag = u.isShill ? "（托）" : "";
+          balanceLines.push(`${label}${tag}：${u.balance.toLocaleString()}`);
+        }
+        if (balanceLines.length > 0) {
+          const balanceContent = `📊 在场积分快照\n${balanceLines.join("\n")}`;
+          const balanceMsg = await storage.createMessage({ roomId, content: balanceContent, type: "system" });
+          broadcast(roomId, { type: "MESSAGE", message: balanceMsg });
+        }
+      }
+    } catch (e) {
+      console.error("Balance snapshot error:", e);
+    }
+
     res.json(closed);
   });
 
