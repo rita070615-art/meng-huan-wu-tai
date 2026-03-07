@@ -372,11 +372,19 @@ export default function RoomPage() {
     .filter((b) => currentRound && b.roundId === currentRound.id)
     .reduce((s, b) => s + b.amount, 0);
 
-  // Cap is reached when round is paused AND total bets >= bankerMaxBet (works on page load too)
+  // Effective cap = pump-adjusted (pump only on new portion, not carryOver)
+  const effectiveRoundCap = (() => {
+    if (!currentRound?.bankerMaxBet) return 0;
+    const rCarry = (currentRound as any).carryOver ?? 0;
+    const rNew = Math.max(0, (currentRound.bankerMaxBet as number) - rCarry);
+    const rPump = (currentRound as any).pumpRate ?? 0;
+    return Math.floor(rNew * (1 - rPump / 100)) + rCarry;
+  })();
+  // Cap is reached when round is paused AND total bets >= effective cap (works on page load too)
   const capReached = !!(
     currentRound?.status === "paused" &&
     currentRound?.bankerMaxBet &&
-    totalPool >= (currentRound.bankerMaxBet as number)
+    totalPool >= effectiveRoundCap
   );
 
   const optionTotals = options.reduce((acc, opt) => {
@@ -495,8 +503,11 @@ export default function RoomPage() {
             if (persistedBanker) {
               const carryAmt = persistedBanker.bankerReturn;
               const addAmt = addToLimit ? Number(addToLimit) : 0;
-              const totalCap = carryAmt + addAmt;
+              const totalCap = carryAmt + addAmt; // gross — sent to server as bankerMaxBet
               const activePumpRate = pumpRate !== "" ? pumpRate : persistedBanker.pumpRate;
+              const activePumpNum = activePumpRate ? Number(activePumpRate) : 0;
+              // Pump is only deducted from the new portion (追加资金), not the carry-over
+              const effectiveDisplayCap = carryAmt + Math.floor(addAmt * (1 - activePumpNum / 100));
               const activePlayerPumpRate = playerPumpRate !== "" ? playerPumpRate : persistedBanker.playerPumpRate;
               return (
                 <div className="px-3 py-3 border-t border-border/50 bg-amber-500/5">
@@ -541,8 +552,8 @@ export default function RoomPage() {
                     </div>
                     <div>
                       <label className="text-[10px] text-muted-foreground">本局上限</label>
-                      <div className="mt-0.5 h-7 px-2 flex items-center text-xs bg-background/60 border border-border rounded font-mono text-green-400 min-w-[80px]">
-                        {totalCap.toLocaleString()}
+                      <div className="mt-0.5 h-7 px-2 flex items-center text-xs bg-background/60 border border-border rounded font-mono text-green-400 min-w-[80px]" title={activePumpNum > 0 && addAmt > 0 ? `${carryAmt.toLocaleString()} + ${addAmt.toLocaleString()} × ${100 - activePumpNum}% = ${effectiveDisplayCap.toLocaleString()}` : undefined}>
+                        {effectiveDisplayCap.toLocaleString()}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 pb-0.5">
@@ -562,8 +573,8 @@ export default function RoomPage() {
                     size="sm"
                     className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                     data-testid="button-admin-start-round"
-                    disabled={startRoundMutation.isPending || totalCap <= 0}
-                    title={totalCap <= 0 ? "本局上限须大于0" : ""}
+                    disabled={startRoundMutation.isPending || effectiveDisplayCap <= 0}
+                    title={effectiveDisplayCap <= 0 ? "本局上限须大于0" : ""}
                     onClick={() => {
                       const defaultOptsNow = defaultOpts;
                       startRoundMutation.mutate({
@@ -1135,7 +1146,7 @@ export default function RoomPage() {
               {bankerCap > 0 && (
                 <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
                   <span>主厨上限</span>
-                  <span className="font-medium">{bankerCap.toLocaleString()}</span>
+                  <span className="font-medium">{effectiveRoundCap.toLocaleString()}</span>
                 </div>
               )}
             </div>

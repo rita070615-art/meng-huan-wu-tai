@@ -598,15 +598,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 broadcast(roomId, { type: "MESSAGE", message: warnMsg });
                 return;
               }
-              // Check cap before shill bet
+              // Check effective cap before shill bet (pump only on new portion)
               if (activeRound.bankerMaxBet) {
+                const sCarryOver = (activeRound as any).carryOver ?? 0;
+                const sNew = Math.max(0, (activeRound.bankerMaxBet as number) - sCarryOver);
+                const sPump = (activeRound as any).pumpRate ?? 0;
+                const sEffCap = Math.floor(sNew * (1 - sPump / 100)) + sCarryOver;
                 const currentTotal = await storage.getTotalBetsForRound(roundId);
-                if (currentTotal >= (activeRound.bankerMaxBet as number)) return; // Already full
-                const remaining = (activeRound.bankerMaxBet as number) - currentTotal;
-                if (amount > remaining) {
-                  // Skip shill bet if it would exceed cap
-                  return;
-                }
+                if (currentTotal >= sEffCap) return; // Already full
+                if (amount > sEffCap - currentTotal) return; // Would exceed cap
               }
               const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
               const randomOption = availableOptions[Math.floor(Math.random() * availableOptions.length)].key;
@@ -633,16 +633,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
               broadcast(roomId, { type: "NEW_BET", bet });
 
-              // Auto-pause when shill bet fills the cap
+              // Auto-pause when shill bet fills the effective cap
               if (activeRound.bankerMaxBet) {
+                const sCarryOver2 = (activeRound as any).carryOver ?? 0;
+                const sNew2 = Math.max(0, (activeRound.bankerMaxBet as number) - sCarryOver2);
+                const sPump2 = (activeRound as any).pumpRate ?? 0;
+                const sEffCap2 = Math.floor(sNew2 * (1 - sPump2 / 100)) + sCarryOver2;
                 const newTotal = await storage.getTotalBetsForRound(roundId);
-                if (newTotal >= (activeRound.bankerMaxBet as number)) {
+                if (newTotal >= sEffCap2) {
                   const stillActive = await storage.getActiveBetRound(roomId);
                   if (stillActive && stillActive.id === roundId && stillActive.status === "open") {
                     const paused = await storage.pauseBetRound(roundId);
                     const capMsg = await storage.createMessage({
                       roomId,
-                      content: `📢 投注已满额（${(activeRound.bankerMaxBet as number).toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+                      content: `📢 投注已满额（${sEffCap2.toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
                       type: "system",
                     });
                     broadcast(roomId, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
@@ -977,11 +981,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(400).json({ error: "该选项为庄家属性，闲家不可下注" });
     }
 
-    // Check total bet cap (bankerMaxBet)
+    // Check total bet cap using effective banker fund (pump deducted from new portion only)
     if (round.bankerMaxBet) {
+      const carryOverR = (round as any).carryOver ?? 0;
+      const newAmountR = Math.max(0, (round.bankerMaxBet as number) - carryOverR);
+      const pumpRateR = (round as any).pumpRate ?? 0;
+      const effectiveCap = Math.floor(newAmountR * (1 - pumpRateR / 100)) + carryOverR;
       const totalBets = await storage.getTotalBetsForRound(round.id);
-      if (totalBets + parsed.data.amount > round.bankerMaxBet) {
-        const remaining = round.bankerMaxBet - totalBets;
+      if (totalBets + parsed.data.amount > effectiveCap) {
+        const remaining = Math.max(0, effectiveCap - totalBets);
         return res.status(400).json({ error: `本轮总下注已达上限，最多还可下注 ${remaining.toLocaleString()} 积分` });
       }
     }
@@ -1015,14 +1023,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     broadcast(req.params.id, { type: "MESSAGE", message: betMsg });
     broadcast(req.params.id, { type: "NEW_BET", bet });
 
-    // Auto-pause when total bets reach the banker cap
+    // Auto-pause when total bets reach the effective banker cap
     if (round.bankerMaxBet) {
+      const carryOverR2 = (round as any).carryOver ?? 0;
+      const newAmountR2 = Math.max(0, (round.bankerMaxBet as number) - carryOverR2);
+      const pumpRateR2 = (round as any).pumpRate ?? 0;
+      const effectiveCap2 = Math.floor(newAmountR2 * (1 - pumpRateR2 / 100)) + carryOverR2;
       const newTotal = await storage.getTotalBetsForRound(round.id);
-      if (newTotal >= (round.bankerMaxBet as number)) {
+      if (newTotal >= effectiveCap2) {
         const paused = await storage.pauseBetRound(round.id);
         const capMsg = await storage.createMessage({
           roomId: req.params.id,
-          content: `📢 投注已满额（${(round.bankerMaxBet as number).toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+          content: `📢 投注已满额（${effectiveCap2.toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
           type: "system",
         });
         broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
