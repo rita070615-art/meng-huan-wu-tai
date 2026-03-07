@@ -165,10 +165,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
-    req.session.totpVerified = false;
+    req.session.totpVerified = true;
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "注册失败，请重试" });
-      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: false, totpVerified: false });
+      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: false, totpVerified: true });
     });
   });
 

@@ -83,10 +83,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Ensure protected super-admin accounts are never TOTP-locked on startup
+  // Disable TOTP for all users on startup — prevents session-clear lockouts after restarts
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE username IN ('@DONG798', '@aoe166')`);
+    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false`);
     await pool.end();
   } catch (e) {
     console.error("Startup TOTP reset failed:", e);
