@@ -372,6 +372,13 @@ export default function RoomPage() {
     .filter((b) => currentRound && b.roundId === currentRound.id)
     .reduce((s, b) => s + b.amount, 0);
 
+  // Cap is reached when round is paused AND total bets >= bankerMaxBet (works on page load too)
+  const capReached = !!(
+    currentRound?.status === "paused" &&
+    currentRound?.bankerMaxBet &&
+    totalPool >= (currentRound.bankerMaxBet as number)
+  );
+
   const optionTotals = options.reduce((acc, opt) => {
     acc[opt.key] = displayBets
       .filter((b) => currentRound && b.roundId === currentRound.id && b.option === opt.key)
@@ -909,7 +916,7 @@ export default function RoomPage() {
               <div className="flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
                   {currentRound.status === "paused"
-                    ? <span className="font-semibold text-amber-500">已暂停点餐</span>
+                    ? <span className="font-semibold text-amber-500">{capReached ? "满额等待开奖" : "已暂停点餐"}</span>
                     : <span className="font-semibold text-primary">菜单进行中</span>
                   }
                   {bankerName && (
@@ -973,8 +980,11 @@ export default function RoomPage() {
                   </div>
                 </div>
               ) : currentRound.status === "paused" ? (
-                <div className="text-center text-xs text-amber-500 py-2 font-medium">
-                  点餐暂停中，请稍候...
+                <div className="text-center text-xs py-2 font-medium">
+                  {capReached
+                    ? <span className="text-green-500">✅ 投注已满额，等待管理员开奖</span>
+                    : <span className="text-amber-500">点餐暂停中，请稍候...</span>
+                  }
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1096,7 +1106,7 @@ export default function RoomPage() {
             {currentRound ? (
               <Badge variant="default" className="text-xs">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground mr-1 animate-pulse inline-block" />
-                {currentRound.status === "paused" ? "已暂停" : "进行中"}
+                {currentRound.status === "paused" ? (capReached ? "满额" : "已暂停") : "进行中"}
               </Badge>
             ) : (
               <Badge variant="secondary" className="text-xs">

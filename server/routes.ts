@@ -598,6 +598,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 broadcast(roomId, { type: "MESSAGE", message: warnMsg });
                 return;
               }
+              // Check cap before shill bet
+              if (activeRound.bankerMaxBet) {
+                const currentTotal = await storage.getTotalBetsForRound(roundId);
+                if (currentTotal >= (activeRound.bankerMaxBet as number)) return; // Already full
+                const remaining = (activeRound.bankerMaxBet as number) - currentTotal;
+                if (amount > remaining) {
+                  // Skip shill bet if it would exceed cap
+                  return;
+                }
+              }
               const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
               const randomOption = availableOptions[Math.floor(Math.random() * availableOptions.length)].key;
               const shillUser = await storage.getUser(shillId);
@@ -622,6 +632,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               });
               broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
               broadcast(roomId, { type: "NEW_BET", bet });
+
+              // Auto-pause when shill bet fills the cap
+              if (activeRound.bankerMaxBet) {
+                const newTotal = await storage.getTotalBetsForRound(roundId);
+                if (newTotal >= (activeRound.bankerMaxBet as number)) {
+                  const stillActive = await storage.getActiveBetRound(roomId);
+                  if (stillActive && stillActive.id === roundId && stillActive.status === "open") {
+                    const paused = await storage.pauseBetRound(roundId);
+                    const capMsg = await storage.createMessage({
+                      roomId,
+                      content: `📢 投注已满额（${(activeRound.bankerMaxBet as number).toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+                      type: "system",
+                    });
+                    broadcast(roomId, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
+                    broadcast(roomId, { type: "MESSAGE", message: capMsg });
+                  }
+                }
+              }
             } catch (e) {
               console.error(`Shill auto-bet error (${shillUsername}):`, e);
             }
@@ -986,6 +1014,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     broadcast(req.params.id, { type: "MESSAGE", message: betMsg });
     broadcast(req.params.id, { type: "NEW_BET", bet });
+
+    // Auto-pause when total bets reach the banker cap
+    if (round.bankerMaxBet) {
+      const newTotal = await storage.getTotalBetsForRound(round.id);
+      if (newTotal >= (round.bankerMaxBet as number)) {
+        const paused = await storage.pauseBetRound(round.id);
+        const capMsg = await storage.createMessage({
+          roomId: req.params.id,
+          content: `📢 投注已满额（${(round.bankerMaxBet as number).toLocaleString()} 积分），点餐已停止，等待管理员开奖。`,
+          type: "system",
+        });
+        broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: paused, reason: "cap_reached" });
+        broadcast(req.params.id, { type: "MESSAGE", message: capMsg });
+      }
+    }
+
     res.json(bet);
   });
 
