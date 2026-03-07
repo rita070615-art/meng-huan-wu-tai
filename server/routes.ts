@@ -726,13 +726,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const baseRatio = playerScore === 9 ? 3 : 2;
         const effectiveRatio = baseRatio * doubleMultiplier;
         const gross = bet.amount * effectiveRatio; // Total player receives (including stake)
-        const netWin = gross - bet.amount;          // Pure profit above stake
-        const pump = netWin > 0 ? Math.floor(netWin * playerPumpRate / 100) : 0;
-        const netWinAfterPump = netWin - pump;
+        const netWin = gross - bet.amount;          // Pure profit above stake (no player-side pump)
         // Cap by remaining available banker fund
         const availableFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
-        const actualNetWin = Math.min(netWinAfterPump, availableFund);
-        const payout = bet.amount + actualNetWin; // Player gets stake back + net win
+        const actualNetWin = Math.min(netWin, availableFund);
+        const payout = bet.amount + actualNetWin; // Player gets stake back + full net win
 
         betPayouts.set(bet.id, payout);
         totalPayout += payout;

@@ -129,7 +129,7 @@ Each option gets a score (0-9) at round close. Each player's option score is com
   - If player_score == 9: payout = 3× bet (net 2× bet) — "九点三倍"
   - Otherwise: payout = 2× bet (net 1× bet, i.e., 1-to-1 odds)
 - **Player loses**: player_score <= banker_score → stake is lost
-- **playerPumpRate** (平台服务费) is deducted from the NET WIN only
+- **playerPumpRate**: NOT applied — players receive their full payout with no deduction
 - **Banker return**: remaining fund (effectiveBankerFund - total net wins paid) + all losing bets
 - **doubleMultiplier**: if admin toggles 庄翻倍, payout ratios are doubled (9-point becomes 6×, normal win becomes 4×)
 
