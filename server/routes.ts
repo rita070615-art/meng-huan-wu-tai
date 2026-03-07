@@ -391,11 +391,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.post("/api/rooms/:id/messages", requireAuth, async (req, res) => {
-    const schema = z.object({ content: z.string().min(1).max(30) });
+    const sender = await storage.getUser(req.session.userId!);
+    const maxLen = sender?.role === "admin" ? 5000 : 30;
+    const schema = z.object({ content: z.string().min(1).max(maxLen) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
-
-    const sender = await storage.getUser(req.session.userId!);
     if (!sender) return res.status(401).json({ error: "用户不存在" });
     if (sender.banned) return res.status(403).json({ error: "账号已被封禁" });
     if (sender.muted) return res.status(403).json({ error: "您已被禁言，无法发送消息" });
@@ -500,23 +500,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existing = await storage.getActiveBetRound(req.params.id);
     if (existing) return res.status(400).json({ error: "已有进行中的投注轮" });
 
+    // New order: 体力, 法力, 力量, 耐力
     const defaultOptions = [
-      { key: "A", label: "力量", color: "#ef4444" },
       { key: "B", label: "体力", color: "#22c55e" },
       { key: "C", label: "法力", color: "#a855f7" },
+      { key: "A", label: "力量", color: "#ef4444" },
       { key: "D", label: "耐力", color: "#3b82f6" },
     ];
 
     const options = req.body.options || defaultOptions;
     const { bankerUserId, bankerNickname, bankerOption, bankerMaxBet } = req.body;
 
-    // Validate banker has enough balance to cover the cap
-    if (bankerUserId && bankerMaxBet) {
-      const banker = await storage.getUser(bankerUserId);
-      if (!banker || banker.balance < Number(bankerMaxBet)) {
-        const name = banker?.nickname || banker?.username || "该用户";
-        return res.status(400).json({ error: `${name}积分不足（当前：${(banker?.balance || 0).toLocaleString()}，需要：${Number(bankerMaxBet).toLocaleString()}）` });
-      }
+    // Banker is now required
+    if (!bankerUserId || !bankerMaxBet) {
+      return res.status(400).json({ error: "必须选择主厨并设置上限才能开启点餐" });
+    }
+
+    const carryOver = req.body.carryOver != null ? Math.max(0, Number(req.body.carryOver)) : 0;
+    const newAmount = Math.max(0, Number(bankerMaxBet) - carryOver);
+
+    // Validate banker has enough NEW balance (carryOver is already in their account)
+    const banker = await storage.getUser(bankerUserId);
+    if (!banker || banker.balance < newAmount) {
+      const name = banker?.nickname || banker?.username || "该用户";
+      return res.status(400).json({ error: `${name}积分不足（当前：${(banker?.balance || 0).toLocaleString()}，需要新追加：${newAmount.toLocaleString()}）` });
     }
 
     const pumpRate = req.body.pumpRate != null ? Math.max(0, Math.min(50, Number(req.body.pumpRate))) : 0;
@@ -530,14 +537,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       bankerMaxBet: bankerMaxBet ? Number(bankerMaxBet) : undefined,
       pumpRate,
       playerPumpRate,
+      carryOver,
     });
 
-    // Deduct banker's pool from their balance
-    if (bankerUserId && bankerMaxBet) {
-      const banker = await storage.getUser(bankerUserId);
-      if (banker) {
-        await storage.updateUserBalance(bankerUserId, banker.balance - Number(bankerMaxBet));
-      }
+    // Deduct only the NEW portion (not carryOver) from banker's balance
+    if (newAmount > 0) {
+      await storage.updateUserBalance(bankerUserId, banker.balance - newAmount);
     }
 
     const msg = await storage.createMessage({
@@ -551,7 +556,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const botCfg = await storage.getBotSettings();
       if (botCfg.enabled) {
-        const shills = await storage.getShillUsers();
+        const allShills = await storage.getShillUsers();
+        // Filter: only shills assigned to this room OR with no room assignment
+        const shills = allShills.filter(s => !(s as any).shillRoomId || (s as any).shillRoomId === req.params.id);
         // Shuffle shills so order is random each round
         const shuffled = [...shills].sort(() => Math.random() - 0.5);
         // Assign each shill a unique random delay (5s–90s), spread out so they don't overlap
@@ -727,72 +734,125 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    // Return remainder to banker after paying winners (commission already taken upfront)
-    let bankerReturnMsg = "";
-    if (hasbanker) {
+    // Build timestamp
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const timeStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+    // Build points display: 体X 法X 力X 耐X in B,C,A,D order
+    const displayOrder = ["B","C","A","D"];
+    const pointsDisplay = optionPoints && Object.keys(optionPoints).length > 0
+      ? displayOrder.map(k => {
+          const o = options.find(x => x.key === k);
+          if (!o) return null;
+          return `${o.label}${optionPoints[k] ?? "?"}`;
+        }).filter(Boolean).join(" ")
+      : options.map(o => o.label).join(" ");
+
+    // Banker info
+    let bankerNameDisplay = "";
+    let bankerOptionDisplay = "";
+    let bankerReturn = 0;
+    if (hasbanker && round.bankerUserId) {
       const banker = await storage.getUser(round.bankerUserId);
+      bankerNameDisplay = round.bankerNickname || banker?.nickname || banker?.username || "未知";
+      if (round.bankerOption) {
+        const bankerOpt = options.find(o => o.key === round.bankerOption);
+        bankerOptionDisplay = bankerOpt?.label || round.bankerOption;
+      }
       if (banker) {
-        // Remaining effective fund goes back; no additional deduction (already taken at start)
-        const bankerReturn = useFixedOdds
+        bankerReturn = useFixedOdds
           ? (bankerFund === Infinity ? 0 : Math.max(0, bankerFund))
-          : effectiveBankerFund; // parimutuel: return the after-commission deposit
+          : effectiveBankerFund;
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
-        const bankerName = round.bankerNickname || banker.nickname || banker.username;
-        bankerReturnMsg = `\n庄家 ${bankerName} 返还：${bankerReturn.toLocaleString()}`;
       }
+    } else {
+      // Non-banker return (already handled above in old code if needed — no-op for no banker)
     }
 
-    // Build points display line if optionPoints provided
-    const pointsLine = optionPoints && Object.keys(optionPoints).length > 0
-      ? "\n开奖点数：" + options.map(o => `${o.label} ${optionPoints[o.key] ?? "?"}`).join("  ")
-      : "";
+    // Per-player net P&L for summary
+    // Group bets by userId, compute net win/loss and final balance
+    const playerIds = [...new Set(roundBetsChron.map(b => b.userId))];
+    const playerLines: string[] = [];
+    for (const uid of playerIds) {
+      const playerBets = roundBetsChron.filter(b => b.userId === uid);
+      const totalStake = playerBets.reduce((s, b) => s + b.amount, 0);
+      let totalWon = 0;
+      for (const b of playerBets) {
+        if (b.option === winnerOptionKey) {
+          totalWon += betPayouts.get(b.id) ?? 0;
+        }
+      }
+      const net = totalWon - totalStake; // net win/loss (positive = won, negative = lost)
+      const user = await storage.getUser(uid);
+      const finalBalance = user?.balance ?? 0;
+      const name = playerBets[0].nickname || playerBets[0].username;
+      const sign = net >= 0 ? "+" : "";
+      playerLines.push(`${name}: ${sign}${net.toLocaleString()} 余: ${finalBalance.toLocaleString()}`);
+    }
+
+    // Retrieve existing history entries for this room
+    const historyEntries = await storage.getBetHistory(req.params.id);
+
+    // Banker P&L for this round
+    let bankerPLLine = "";
+    if (hasbanker) {
+      const bankerPumpAmount = round.bankerMaxBet ? Math.floor((round.bankerMaxBet as number) * pumpRate / 100) : 0;
+      const bankerNet = bankerReturn - (round.bankerMaxBet as number);
+      const bankerNetCarry = round.carryOver ?? 0;
+      // Effective cost = pump on new amount; net from round = bankerReturn - bankerMaxBet (negative = loss)
+      bankerPLLine = `本餐厨师（${bankerNameDisplay}）费用: 抽水 ${bankerPumpAmount.toLocaleString()} | 本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
+    }
+
+    // Build new summary message
+    const divider = "——————————————";
+    const lines = [
+      divider,
+      timeStr,
+      `点餐结果: ${pointsDisplay}`,
+      bankerNameDisplay ? `厨师: ${bankerNameDisplay}` : "",
+      bankerReturn != null && hasbanker ? `当局余: ${bankerReturn.toLocaleString()}` : "",
+      bankerOptionDisplay ? `主厨属性: ${bankerOptionDisplay}` : "",
+    ].filter(Boolean);
+
+    if (playerLines.length > 0) {
+      lines.push("————");
+      lines.push(...playerLines);
+    }
+
+    // Historical entries (last 10 for conciseness)
+    if (historyEntries.length > 0) {
+      lines.push("————");
+      lines.push("历史出餐记录:");
+      const recent = historyEntries.slice(-10);
+      lines.push(...recent);
+    }
+
+    if (bankerPLLine) {
+      lines.push("————");
+      lines.push(bankerPLLine);
+    }
+
+    const summaryContent = lines.join("\n");
+
+    // This round's entry for history
+    const historyEntry = `${timeStr} 结果:${winnerOpt?.label || winnerOptionKey}${optionPoints ? `(${optionPoints[winnerOptionKey] ?? "?"}分)` : ""} 出餐:${roundBetsChron.length}人`;
+    await storage.appendBetHistory(req.params.id, historyEntry);
 
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `本轮厨房已完成出餐。${pointsLine}\n今日人气口味：${winnerOpt?.label || winnerOptionKey}${optionPoints ? `（${optionPoints[winnerOptionKey] ?? "?"}点）` : ""}\n感谢参与点餐体验。`,
+      content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || winnerOptionKey}${optionPoints ? `（${optionPoints[winnerOptionKey] ?? "?"}点）` : ""}`,
       type: "system",
     });
 
-    // Build bet summary in chronological order (oldest first = highest priority)
-    if (roundBetsChron.length > 0) {
-      const lines = roundBetsChron.map((b) => {
-        const optLabel = options.find(o => o.key === b.option)?.label || b.option;
-        const name = b.nickname || b.username;
-        const isWinner = b.option === winnerOptionKey;
-        const ratio = winnerOpt?.ratio;
-        let suffix: string;
-        if (!isWinner) {
-          suffix = " ✗";
-        } else {
-          const actualPayout = betPayouts.get(b.id);
-          if (actualPayout != null && actualPayout === 0) {
-            // Winner but banker ran out of funds
-            suffix = " ✓ 庄家不足";
-          } else if (useFixedOdds && ratio) {
-            const effectiveRatio = ratio * doubleMultiplier;
-            suffix = doubleMultiplier > 1 ? ` ✓ × ${effectiveRatio}赔（翻倍）` : ` ✓ × ${ratio}赔`;
-          } else {
-            suffix = doubleMultiplier > 1 ? " ✓ 赢（翻倍）" : " ✓ 赢";
-          }
-        }
-        return `${name}  ${optLabel}  ${b.amount.toLocaleString()}${suffix}`;
-      });
-      const pumpParts = [];
-      if (pumpRate > 0) pumpParts.push(`厨房服务费 ${pumpRate}%`);
-      if (playerPumpRate > 0) pumpParts.push(`平台服务费 ${playerPumpRate}%`);
-      const pump = pumpParts.length > 0
-        ? `\n${pumpParts.join("  ")}  本轮出餐数量 ${roundBetsChron.length}`
-        : `\n本轮出餐数量 ${roundBetsChron.length}`;
-      const summaryContent = `【本轮点餐统计】\n` + lines.join("\n") + pump + bankerReturnMsg;
-      const summaryMsg = await storage.createMessage({
-        roomId: req.params.id,
-        content: summaryContent,
-        type: "system",
-      });
-      broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
-    }
+    const summaryMsg = await storage.createMessage({
+      roomId: req.params.id,
+      content: summaryContent,
+      type: "system",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg });
     res.json(closed);
@@ -815,6 +875,42 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const updated = await storage.resumeBetRound(round.id);
     broadcast(req.params.id, { type: "BET_ROUND_RESUMED", round: updated });
     res.json(updated);
+  });
+
+  // Cancel round: refund all bets, return banker fund
+  app.post("/api/rooms/:id/bet-round/cancel", requireAdmin, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round) return res.status(404).json({ error: "没有进行中的点餐轮" });
+
+    // Refund all bets
+    const roundBets = await storage.getBetsForRound(round.id);
+    for (const bet of roundBets) {
+      const betUser = await storage.getUser(bet.userId);
+      if (betUser) {
+        await storage.updateUserBalance(bet.userId, betUser.balance + bet.amount);
+      }
+    }
+
+    // Return banker's deposited fund (the new portion: bankerMaxBet - carryOver)
+    if (round.bankerUserId && round.bankerMaxBet) {
+      const banker = await storage.getUser(round.bankerUserId);
+      if (banker) {
+        const carryOver = (round as any).carryOver ?? 0;
+        const newPortion = Math.max(0, (round.bankerMaxBet as number) - carryOver);
+        if (newPortion > 0) {
+          await storage.updateUserBalance(round.bankerUserId, banker.balance + newPortion);
+        }
+      }
+    }
+
+    const cancelled = await storage.cancelBetRound(round.id);
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      content: "本轮点餐已取消，所有积分已退还。",
+      type: "system",
+    });
+    broadcast(req.params.id, { type: "BET_ROUND_CANCELLED", round: cancelled, message: msg });
+    res.json(cancelled);
   });
 
   // BETS
@@ -969,6 +1065,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: user.id, username: user.username, nickname: user.nickname });
   });
 
+  // Helper: check if a user is a protected super-admin (cannot be modified by others)
+  const PROTECTED_USERNAMES = ["DONG798", "@DONG798"];
+  const isProtectedAdmin = (u: { username: string }) => PROTECTED_USERNAMES.includes(u.username);
+
+  app.post("/api/admin/users", requireAdmin, async (req, res) => {
+    const schema = z.object({
+      username: z.string().min(2).max(30),
+      password: z.string().min(3).max(100),
+      nickname: z.string().max(20).optional(),
+      balance: z.number().int().min(0).optional(),
+      role: z.enum(["admin", "user"]).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const existing = await storage.getUserByUsername(parsed.data.username);
+    if (existing) return res.status(400).json({ error: "用户名已存在" });
+
+    const user = await storage.createUser({
+      username: parsed.data.username,
+      password: parsed.data.password,
+      nickname: parsed.data.nickname || undefined,
+    });
+    if (parsed.data.balance) await storage.updateUserBalance(user.id, parsed.data.balance);
+    if (parsed.data.role === "admin") await storage.setUserRole(user.id, "admin");
+    const updated = await storage.getUser(user.id);
+    res.json({ id: updated!.id, username: updated!.username, nickname: updated!.nickname, balance: updated!.balance, role: updated!.role });
+  });
+
   app.patch("/api/admin/users/:id/ban", requireAdmin, async (req, res) => {
     const schema = z.object({ banned: z.boolean() });
     const parsed = schema.safeParse(req.body);
@@ -977,6 +1102,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(req.params.id);
     if (!target) return res.status(404).json({ error: "User not found" });
     if (target.role === "admin") return res.status(400).json({ error: "不能封禁管理员账号" });
+    if (isProtectedAdmin(target)) return res.status(403).json({ error: "不能操作受保护账号" });
 
     const user = await storage.banUser(req.params.id, parsed.data.banned);
     res.json({ id: user!.id, username: user!.username, banned: user!.banned });
@@ -990,6 +1116,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(req.params.id);
     if (!target) return res.status(404).json({ error: "User not found" });
     if (target.role === "admin") return res.status(400).json({ error: "不能禁言管理员账号" });
+    if (isProtectedAdmin(target)) return res.status(403).json({ error: "不能操作受保护账号" });
 
     const user = await storage.muteUser(req.params.id, parsed.data.muted);
     res.json({ id: user!.id, username: user!.username, muted: user!.muted });
@@ -1003,6 +1130,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const target = await storage.getUser(req.params.id);
     if (!target) return res.status(404).json({ error: "User not found" });
     if (target.id === req.session.userId) return res.status(400).json({ error: "不能修改自己的权限" });
+    if (isProtectedAdmin(target)) return res.status(403).json({ error: "不能操作受保护账号" });
 
     const user = await storage.setUserRole(req.params.id, parsed.data.role);
     res.json({ id: user!.id, username: user!.username, role: user!.role });
@@ -1019,6 +1147,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const user = await storage.setUserShill(req.params.id, parsed.data.isShill);
     res.json({ id: user!.id, username: user!.username, isShill: user!.isShill });
+  });
+
+  app.patch("/api/admin/users/:id/shill-room", requireAdmin, async (req, res) => {
+    const schema = z.object({ shillRoomId: z.string().nullable() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (!target.isShill) return res.status(400).json({ error: "用户不是托，无需分配房间" });
+
+    const user = await storage.setUserShillRoom(req.params.id, parsed.data.shillRoomId);
+    res.json({ id: user!.id, username: user!.username });
   });
 
   // BOT SETTINGS

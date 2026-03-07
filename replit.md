@@ -58,20 +58,27 @@ POST /api/rooms/:id/messages
 DELETE /api/rooms/:id/messages/:msgId (admin)
 
 GET  /api/rooms/:id/bet-round
-POST /api/rooms/:id/bet-round (admin - start round)
+POST /api/rooms/:id/bet-round (admin - start round, banker required)
 PATCH /api/rooms/:id/bet-round/options (admin - update labels)
 POST /api/rooms/:id/bet-round/close (admin - declare winner)
+POST /api/rooms/:id/bet-round/pause (admin)
+POST /api/rooms/:id/bet-round/resume (admin)
+POST /api/rooms/:id/bet-round/cancel (admin - cancel & refund all)
 
 POST /api/rooms/:id/bets
 GET  /api/rooms/:id/bets
+DELETE /api/rooms/:id/bets (user - cancel own bets)
 
 GET  /api/admin/users (admin)
+POST /api/admin/users (admin - create new user)
 PATCH /api/admin/users/:id/balance (admin)
 PATCH /api/admin/users/:id/notes (admin)
 PATCH /api/admin/users/:id/ban (admin)
 PATCH /api/admin/users/:id/mute (admin)
 PATCH /api/admin/users/:id/shill (admin)
+PATCH /api/admin/users/:id/shill-room (admin - assign shill to specific room)
 PATCH /api/admin/users/:id/nickname (admin)
+PATCH /api/admin/users/:id/role (admin - promote/demote, DONG798 protected)
 
 GET  /api/admin/bot-settings (admin)
 PATCH /api/admin/bot-settings (admin)
@@ -96,19 +103,62 @@ Events:
 - `ROOM_CREATED` / `ROOM_UPDATED` / `ROOM_DELETED`
 - `NEW_PRIVATE_MESSAGE` - private message notification
 
-## Banker (庄) System
+## Banker (主厨/庄) System — REQUIRED
 
-When starting a round, admin can optionally configure:
-- 庄家 (banker): any non-shill user selected from dropdown
-- 庄家属性: which option the banker "owns" (A/B/C/D)
-- 庄家上限: maximum total bets allowed against the banker's option
+When starting a round, admin MUST configure a banker (主厨):
+- 主厨 (banker): required — round cannot start without a banker and max bet
+- 主厨属性: which option the banker "owns" (B体力/C法力/A力量/D耐力, in that order)
+- 主厨上限: maximum total bets (banker deposits this from their balance)
+- 续庄携带 (carryOver): if same banker continues, fill in their last round's remaining balance — only the NEW portion is deducted
 
 Rules:
-- Non-banker users cannot bet on the banker's option (shown as "庄" badge, disabled)
-- Total bets on banker's option are capped at bankerMaxBet (enforced server-side)
-- Banker info displayed in sidebar and betting panel banner
+- Non-banker users cannot bet on the banker's option
+- Total bets are capped at bankerMaxBet (enforced server-side)
+- Only the (bankerMaxBet - carryOver) portion is deducted from banker's balance
+- Pump rate only applies to the new deposited portion, not the carryOver
+- DONG798 and @DONG798 accounts are super-admin protected (cannot be banned/muted/demoted)
 
-Banker data stored in betRounds: `bankerUserId`, `bankerNickname`, `bankerOption`, `bankerMaxBet`
+Banker data stored in betRounds: `bankerUserId`, `bankerNickname`, `bankerOption`, `bankerMaxBet`, `carryOver`
+
+## Cancel Round
+
+Admin can cancel a round mid-game (during open or paused state):
+- Endpoint: POST /api/rooms/:id/bet-round/cancel
+- Refunds all bets to players
+- Returns the new-portion banker deposit (not carryOver) to banker
+- Broadcasts BET_ROUND_CANCELLED event
+- UI: red "取消本轮" button in admin panel with confirmation inline dialog
+
+## Bet History
+
+Each room stores accumulated bet history (last results) in `rooms.bet_history` (TEXT, newline-separated).
+- Appended after each round closes
+- Format: `{timestamp} 结果:{winner label}({points}分) 出餐:{count}人`
+- Displayed in the close-round summary message (last 10 entries)
+
+## New Summary Format
+
+After closing a round, the system posts a structured summary:
+```
+——————————————
+{timestamp}
+点餐结果: 体X 法X 力X 耐X
+厨师: {banker name}
+当局余: {banker remaining fund}
+主厨属性: {option label}
+————
+{player}: ±{net} 余: {balance}
+...
+————
+历史出餐记录:
+{recent 10 history entries}
+————
+本餐厨师（name）费用: 抽水 X | 本轮净 ±X
+```
+
+## Option Display Order
+
+Fixed display order for options: 体力(B, #22c55e), 法力(C, #a855f7), 力量(A, #ef4444), 耐力(D, #3b82f6)
 
 ## Multiple Bets per Round
 

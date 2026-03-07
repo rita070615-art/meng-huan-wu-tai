@@ -30,9 +30,12 @@ export interface IStorage {
   getRoom(id: string): Promise<Room | undefined>;
   updateRoom(id: string, data: Partial<Pick<Room, "name" | "description" | "isActive" | "gameUrl" | "password" | "chatMuted">>): Promise<Room | undefined>;
   deleteRoom(id: string): Promise<void>;
+  appendBetHistory(roomId: string, entry: string): Promise<void>;
+  getBetHistory(roomId: string): Promise<string[]>;
 
   // Bet Rounds
-  createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number }): Promise<BetRound>;
+  createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number; carryOver?: number }): Promise<BetRound>;
+  cancelBetRound(id: string): Promise<BetRound | undefined>;
   getActiveBetRound(roomId: string): Promise<BetRound | undefined>;
   getBetRound(id: string): Promise<BetRound | undefined>;
   closeBetRound(id: string, winnerOption: string): Promise<BetRound | undefined>;
@@ -63,6 +66,7 @@ export interface IStorage {
   updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number }): Promise<BotSettings>;
   getShillUsers(): Promise<User[]>;
   setUserShill(id: string, isShill: boolean): Promise<User | undefined>;
+  setUserShillRoom(id: string, shillRoomId: string | null): Promise<User | undefined>;
   updateUserPassword(id: string, password: string): Promise<User | undefined>;
   enableTotp(id: string, secret: string): Promise<User | undefined>;
 
@@ -154,13 +158,35 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async appendBetHistory(roomId: string, entry: string): Promise<void> {
+    const room = await this.getRoom(roomId);
+    if (!room) return;
+    const current = room.betHistory || "";
+    const updated = current ? current + "\n" + entry : entry;
+    await db.update(rooms).set({ betHistory: updated } as any).where(eq(rooms.id, roomId));
+  }
+
+  async getBetHistory(roomId: string): Promise<string[]> {
+    const room = await this.getRoom(roomId);
+    if (!room || !(room as any).betHistory) return [];
+    return ((room as any).betHistory as string).split("\n").filter(Boolean);
+  }
+
   async deleteRoom(id: string): Promise<void> {
     await db.update(rooms).set({ isActive: false }).where(eq(rooms.id, id));
   }
 
-  async createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number }): Promise<BetRound> {
+  async createBetRound(data: { roomId: string; options: object; bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number; carryOver?: number }): Promise<BetRound> {
     const id = randomUUID();
-    const result = await db.insert(betRounds).values({ id, ...data, status: "open" }).returning();
+    const result = await db.insert(betRounds).values({ id, ...data, carryOver: data.carryOver ?? 0, status: "open" }).returning();
+    return result[0];
+  }
+
+  async cancelBetRound(id: string): Promise<BetRound | undefined> {
+    const result = await db.update(betRounds)
+      .set({ status: "cancelled", closedAt: new Date() })
+      .where(eq(betRounds.id, id))
+      .returning();
     return result[0];
   }
 
@@ -316,6 +342,11 @@ export class DbStorage implements IStorage {
 
   async setUserShill(id: string, isShill: boolean): Promise<User | undefined> {
     const result = await db.update(users).set({ isShill }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async setUserShillRoom(id: string, shillRoomId: string | null): Promise<User | undefined> {
+    const result = await db.update(users).set({ shillRoomId } as any).where(eq(users.id, id)).returning();
     return result[0];
   }
 

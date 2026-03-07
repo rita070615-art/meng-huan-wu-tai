@@ -615,6 +615,13 @@ function UsersAdmin() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 5;
+  const [confirmRoleChange, setConfirmRoleChange] = useState<{ id: string; newRole: string } | null>(null);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newNickname, setNewNickname] = useState("");
+  const [newBalance, setNewBalance] = useState("0");
+  const [newRole, setNewRole] = useState<"user" | "admin">("user");
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -685,6 +692,18 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: (data: { username: string; password: string; nickname?: string; balance?: number; role?: string }) =>
+      apiRequest("POST", "/api/admin/users", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setShowCreateUser(false);
+      setNewUsername(""); setNewPassword(""); setNewNickname(""); setNewBalance("0"); setNewRole("user");
+      toast({ title: "用户已创建" });
+    },
+    onError: (e: Error) => toast({ title: "创建失败", description: e.message, variant: "destructive" }),
+  });
+
   const sortedUsers = users ? [
     ...users.filter(u => u.role === "admin"),
     ...users.filter(u => u.role !== "admin"),
@@ -705,10 +724,73 @@ function UsersAdmin() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-3 flex items-center gap-2">
-        <Users className="w-4 h-4" />
-        用户列表
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold flex items-center gap-2">
+          <Users className="w-4 h-4" />
+          用户列表
+        </h2>
+        <Button size="sm" className="h-7 text-xs px-2" onClick={() => setShowCreateUser(v => !v)} data-testid="button-toggle-create-user">
+          <Plus className="w-3.5 h-3.5 mr-1" />
+          创建用户
+        </Button>
+      </div>
+
+      {/* Create User Form */}
+      {showCreateUser && (
+        <div className="mb-4 border border-border rounded-lg p-3 bg-card space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground">新建用户</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-muted-foreground">用户名 *</label>
+              <Input data-testid="input-new-username" value={newUsername} onChange={e => setNewUsername(e.target.value)} placeholder="用户名" className="h-7 text-xs mt-0.5" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">密码 *</label>
+              <Input data-testid="input-new-password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="密码" className="h-7 text-xs mt-0.5" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">昵称</label>
+              <Input data-testid="input-new-nickname" value={newNickname} onChange={e => setNewNickname(e.target.value)} placeholder="可选" className="h-7 text-xs mt-0.5" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">初始余额</label>
+              <Input data-testid="input-new-balance" type="number" min={0} value={newBalance} onChange={e => setNewBalance(e.target.value)} placeholder="0" className="h-7 text-xs mt-0.5" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground">角色：</label>
+            <select value={newRole} onChange={e => setNewRole(e.target.value as "user"|"admin")} className="text-xs bg-background border border-border rounded px-2 py-0.5 text-foreground" data-testid="select-new-role">
+              <option value="user">普通用户</option>
+              <option value="admin">管理员</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" className="h-7 text-xs" disabled={!newUsername.trim() || !newPassword.trim() || createUserMutation.isPending} onClick={() => createUserMutation.mutate({ username: newUsername.trim(), password: newPassword, nickname: newNickname.trim() || undefined, balance: Number(newBalance) || 0, role: newRole })} data-testid="button-create-user-submit">
+              {createUserMutation.isPending ? "创建中..." : "创建"}
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowCreateUser(false)}>取消</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Role Change Dialog */}
+      {confirmRoleChange && (() => {
+        const target = users?.find(u => u.id === confirmRoleChange.id);
+        return (
+          <div className="mb-4 border border-yellow-500/40 bg-yellow-500/5 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-semibold text-yellow-400">
+              确认{confirmRoleChange.newRole === "admin" ? "升级为管理员" : "降为普通用户"}：{target?.nickname || target?.username}？
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" className="h-6 text-xs bg-yellow-500 hover:bg-yellow-600 text-black" disabled={roleMutation.isPending} onClick={() => { roleMutation.mutate({ id: confirmRoleChange.id, role: confirmRoleChange.newRole }); setConfirmRoleChange(null); }} data-testid="button-confirm-role-change">
+                确认
+              </Button>
+              <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setConfirmRoleChange(null)}>取消</Button>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="mb-3">
         <Input
           data-testid="input-user-search"
@@ -849,7 +931,7 @@ function UsersAdmin() {
                     </div>
                   )
                 ) : (
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-col items-end gap-1 shrink-0">
                     <span
                       className="text-sm font-semibold flex items-center gap-1"
                       data-testid={`text-user-balance-${u.id}`}
@@ -857,58 +939,59 @@ function UsersAdmin() {
                       <Coins className="w-3.5 h-3.5 text-yellow-500" />
                       {u.balance.toLocaleString()}
                     </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      data-testid={`button-edit-balance-${u.id}`}
-                      onClick={() => { setEditingBalance(u.id); setEditBalance(String(u.balance)); }}
-                      title="修改余额"
-                    >
-                      <Coins className="w-3.5 h-3.5" />
-                    </Button>
-                    {u.role !== "admin" && (
+                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
                       <Button
                         size="sm"
-                        data-testid={`button-shill-${u.id}`}
-                        onClick={() => shillMutation.mutate({ id: u.id, isShill: !u.isShill })}
-                        disabled={shillMutation.isPending}
-                        title={u.isShill ? "点击关闭（当前托·开启）" : "点击开启托身份"}
-                        className={u.isShill
-                          ? "bg-green-500/20 border border-green-500 text-green-400 hover:bg-green-500/30"
-                          : "bg-transparent border border-border text-muted-foreground hover:border-green-500/60 hover:text-green-400"
-                        }
+                        variant="outline"
+                        data-testid={`button-edit-balance-${u.id}`}
+                        onClick={() => { setEditingBalance(u.id); setEditBalance(String(u.balance)); }}
+                        className="h-6 px-2 text-xs"
                       >
-                        <Bot className="w-3.5 h-3.5" />
+                        余额
                       </Button>
-                    )}
-                    {u.role !== "admin" && (
-                      <Button
-                        size="sm"
-                        variant={u.banned ? "secondary" : "outline"}
-                        data-testid={`button-ban-${u.id}`}
-                        onClick={() => banMutation.mutate({ id: u.id, banned: !u.banned })}
-                        disabled={banMutation.isPending}
-                        title={u.banned ? "解除封禁" : "封禁账号"}
-                        className={u.banned ? "" : "hover:border-destructive hover:text-destructive"}
-                      >
-                        {u.banned ? <ShieldCheck className="w-3.5 h-3.5 text-green-500" /> : <Ban className="w-3.5 h-3.5" />}
-                      </Button>
-                    )}
-                    {u.id !== currentUser?.id && (
-                      <Button
-                        size="sm"
-                        data-testid={`button-role-${u.id}`}
-                        onClick={() => roleMutation.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" })}
-                        disabled={roleMutation.isPending}
-                        title={u.role === "admin" ? "撤销管理员权限" : "升级为管理员"}
-                        className={u.role === "admin"
-                          ? "bg-yellow-500/20 border border-yellow-500 text-yellow-400 hover:bg-yellow-500/30"
-                          : "bg-transparent border border-border text-muted-foreground hover:border-yellow-500/60 hover:text-yellow-400"
-                        }
-                      >
-                        <ShieldPlus className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
+                      {u.role !== "admin" && (
+                        <Button
+                          size="sm"
+                          data-testid={`button-shill-${u.id}`}
+                          onClick={() => shillMutation.mutate({ id: u.id, isShill: !u.isShill })}
+                          disabled={shillMutation.isPending}
+                          className={`h-6 px-2 text-xs ${u.isShill
+                            ? "bg-green-500/20 border border-green-500 text-green-400 hover:bg-green-500/30"
+                            : "bg-transparent border border-border text-muted-foreground hover:border-green-500/60 hover:text-green-400"
+                          }`}
+                        >
+                          托管
+                        </Button>
+                      )}
+                      {u.role !== "admin" && (
+                        <Button
+                          size="sm"
+                          data-testid={`button-ban-${u.id}`}
+                          onClick={() => banMutation.mutate({ id: u.id, banned: !u.banned })}
+                          disabled={banMutation.isPending}
+                          className={`h-6 px-2 text-xs ${u.banned
+                            ? "bg-green-500/20 border border-green-500 text-green-400 hover:bg-green-500/30"
+                            : "bg-transparent border border-border text-muted-foreground hover:border-destructive/60 hover:text-destructive"
+                          }`}
+                        >
+                          {u.banned ? "解封" : "封号"}
+                        </Button>
+                      )}
+                      {u.id !== currentUser?.id && (
+                        <Button
+                          size="sm"
+                          data-testid={`button-role-${u.id}`}
+                          onClick={() => setConfirmRoleChange({ id: u.id, newRole: u.role === "admin" ? "user" : "admin" })}
+                          disabled={roleMutation.isPending}
+                          className={`h-6 px-2 text-xs ${u.role === "admin"
+                            ? "bg-yellow-500/20 border border-yellow-500 text-yellow-400 hover:bg-yellow-500/30"
+                            : "bg-transparent border border-border text-muted-foreground hover:border-yellow-500/60 hover:text-yellow-400"
+                          }`}
+                        >
+                          设置管理
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

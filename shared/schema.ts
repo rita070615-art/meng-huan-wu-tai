@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   banned: boolean("banned").notNull().default(false),
   muted: boolean("muted").notNull().default(false),
   isShill: boolean("is_shill").notNull().default(false),
+  shillRoomId: varchar("shill_room_id", { length: 36 }),
   registrationIp: text("registration_ip").default(""),
   totpSecret: text("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),
@@ -36,6 +37,7 @@ export const rooms = pgTable("rooms", {
   gameUrl: text("game_url").default(""),
   password: text("password").default(""),
   chatMuted: boolean("chat_muted").notNull().default(false),
+  betHistory: text("bet_history").default(""),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -51,6 +53,7 @@ export const betRounds = pgTable("bet_rounds", {
   bankerMaxBet: integer("banker_max_bet"),
   pumpRate: integer("pump_rate").notNull().default(0),
   playerPumpRate: integer("player_pump_rate").notNull().default(0),
+  carryOver: integer("carry_over").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
 });

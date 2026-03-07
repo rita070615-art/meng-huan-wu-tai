@@ -35,9 +35,11 @@ export default function RoomPage() {
   const [bankerUserId, setBankerUserId] = useState("");
   const [bankerOption, setBankerOption] = useState("");
   const [bankerMaxBet, setBankerMaxBet] = useState("");
+  const [carryOver, setCarryOver] = useState("");
   const [pumpRate, setPumpRate] = useState("");
   const [playerPumpRate, setPlayerPumpRate] = useState("");
   const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
+  const [cancelRoundConfirm, setCancelRoundConfirm] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
 
@@ -241,9 +243,9 @@ export default function RoomPage() {
   });
 
   const startRoundMutation = useMutation({
-    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; pumpRate?: number; playerPumpRate?: number; options?: object }) =>
+    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; options?: object }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
-    onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); },
+    onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
   });
 
@@ -265,6 +267,18 @@ export default function RoomPage() {
     mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round/resume`, {}),
     onSuccess: (data: BetRound) => setLiveRound((prev) => prev ? { ...prev, status: "open" } : null),
     onError: (e: Error) => toast({ title: "恢复失败", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelRoundMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round/cancel`, {}),
+    onSuccess: () => {
+      setLiveRound(null);
+      setOptionPoints({});
+      setDoubleMode(false);
+      setCancelRoundConfirm(false);
+      toast({ title: "点餐已取消，积分已退还" });
+    },
+    onError: (e: Error) => { setCancelRoundConfirm(false); toast({ title: "取消失败", description: e.message, variant: "destructive" }); },
   });
 
   const muteUserMutation = useMutation({
@@ -447,22 +461,21 @@ export default function RoomPage() {
           {isAdmin && !currentRound && (
             <div className="px-3 py-3 border-t border-border/50 bg-primary/3">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-primary">开庄设置</span>
-                <span className="text-xs text-muted-foreground">（主厨可选，直接点"开启点餐"可跳过）</span>
+                <span className="text-xs font-semibold text-primary">开局设置（必须选主厨）</span>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="min-w-0">
                   <label className="text-xs text-muted-foreground flex items-center gap-1">
-                    选主厨
+                    选主厨 <span className="text-red-500">*</span>
                     <button type="button" onClick={() => refetchOnlineUsers()} className="text-[10px] text-primary hover:underline">刷新</button>
                   </label>
                   <select
                     data-testid="select-banker-user"
                     value={bankerUserId}
-                    onChange={e => setBankerUserId(e.target.value)}
+                    onChange={e => { setBankerUserId(e.target.value); if (!e.target.value) { setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); } }}
                     className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground truncate"
                   >
-                    <option value="">无主厨</option>
+                    <option value="">— 请选择主厨 —</option>
                     {(onlineUsers || []).map(u => (
                       <option key={u.id} value={u.id}>{u.nickname || u.username}（{u.balance.toLocaleString()}）</option>
                     ))}
@@ -478,13 +491,13 @@ export default function RoomPage() {
                     className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
                   >
                     <option value="">选择属性</option>
-                    {[{key:"A",label:"力量"},{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"D",label:"耐力"}].map(o => (
+                    {[{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"A",label:"力量"},{key:"D",label:"耐力"}].map(o => (
                       <option key={o.key} value={o.key}>{o.label}</option>
                     ))}
                   </select>
                 </div>
                 <div className="min-w-0">
-                  <label className="text-xs text-muted-foreground">主厨上限</label>
+                  <label className="text-xs text-muted-foreground">主厨上限 <span className="text-red-500">*</span></label>
                   <Input
                     data-testid="input-banker-max-bet"
                     type="number"
@@ -497,6 +510,20 @@ export default function RoomPage() {
                   />
                 </div>
               </div>
+              {bankerUserId && (
+                <div className="mb-2">
+                  <label className="text-xs text-muted-foreground">续庄携带（上轮余额，不重复扣款）</label>
+                  <Input
+                    data-testid="input-carry-over"
+                    type="number"
+                    min={0}
+                    value={carryOver}
+                    onChange={e => setCarryOver(e.target.value)}
+                    placeholder="0（新局填0）"
+                    className="mt-0.5 h-7 text-xs w-40"
+                  />
+                </div>
+              )}
               {/* Odds & pump rate */}
               <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
                 <div className="flex items-center justify-between mb-1.5">
@@ -531,7 +558,7 @@ export default function RoomPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {[{key:"A",label:"力量",color:"#ef4444"},{key:"B",label:"体力",color:"#3b82f6"},{key:"C",label:"法力",color:"#a855f7"},{key:"D",label:"耐力",color:"#22c55e"}].map(o => (
+                  {[{key:"B",label:"体力",color:"#22c55e"},{key:"C",label:"法力",color:"#a855f7"},{key:"A",label:"力量",color:"#ef4444"},{key:"D",label:"耐力",color:"#3b82f6"}].map(o => (
                     <div key={o.key}>
                       <label className="text-[10px] font-medium" style={{ color: o.color }}>{o.label}</label>
                       <Input
@@ -550,23 +577,30 @@ export default function RoomPage() {
               </div>
               <Button
                 size="sm"
-                className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white"
+                className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                 data-testid="button-admin-start-round"
-                disabled={startRoundMutation.isPending}
+                disabled={startRoundMutation.isPending || !bankerUserId || !bankerMaxBet}
+                title={!bankerUserId || !bankerMaxBet ? "必须选择主厨并设置上限" : ""}
                 onClick={() => {
+                  if (!bankerUserId || !bankerMaxBet) {
+                    toast({ title: "请先选择主厨并设置上限", variant: "destructive" });
+                    return;
+                  }
                   const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
-                  if (bankerUserId && bankerMaxBet && bu) {
+                  const carryOverNum = carryOver ? Number(carryOver) : 0;
+                  if (bu) {
                     const cap = Number(bankerMaxBet);
-                    if (bu.balance < cap) {
-                      toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要：${cap.toLocaleString()}`, variant: "destructive" });
+                    const needed = Math.max(0, cap - carryOverNum);
+                    if (bu.balance < needed) {
+                      toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要追加：${needed.toLocaleString()}`, variant: "destructive" });
                       return;
                     }
                   }
                   const defaultOpts = [
-                    { key: "A", label: "力量", color: "#ef4444" },
-                    { key: "B", label: "体力", color: "#3b82f6" },
+                    { key: "B", label: "体力", color: "#22c55e" },
                     { key: "C", label: "法力", color: "#a855f7" },
-                    { key: "D", label: "耐力", color: "#22c55e" },
+                    { key: "A", label: "力量", color: "#ef4444" },
+                    { key: "D", label: "耐力", color: "#3b82f6" },
                   ].map(o => ({
                     ...o,
                     ...(optionRatios[o.key] ? { ratio: Number(optionRatios[o.key]) } : {}),
@@ -576,11 +610,13 @@ export default function RoomPage() {
                     bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
                     bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
                     bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
+                    carryOver: carryOverNum,
                     pumpRate: pumpRate ? Number(pumpRate) : undefined,
                     playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
                     options: defaultOpts,
                   });
                   setOptionRatios({ A: "", B: "", C: "", D: "" });
+                  setCarryOver("");
                   setPumpRate("");
                   setPlayerPumpRate("");
                 }}
@@ -673,7 +709,29 @@ export default function RoomPage() {
                 >
                   清空
                 </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-6 px-2 text-xs ml-auto"
+                  onClick={() => setCancelRoundConfirm(true)}
+                  data-testid="button-admin-cancel-round"
+                >
+                  取消本轮
+                </Button>
               </div>
+              {cancelRoundConfirm && (
+                <div className="mt-2 border border-destructive/40 bg-destructive/5 rounded p-2 flex flex-col gap-1.5">
+                  <span className="text-xs text-destructive font-semibold">确认取消本轮点餐？所有积分将退还。</span>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={() => cancelRoundMutation.mutate()} disabled={cancelRoundMutation.isPending}>
+                      {cancelRoundMutation.isPending ? "取消中..." : "确认取消"}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => setCancelRoundConfirm(false)}>
+                      返回
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -747,7 +805,7 @@ export default function RoomPage() {
                 onKeyDown={(e) => { if (e.key === "Escape") setMentionQuery(null); }}
                 placeholder={chatMuted && !isAdmin ? "聊天室已禁言" : isAdmin ? "输入消息，@ 提及用户..." : "输入消息（最多30字）..."}
                 disabled={!isAdmin && chatMuted}
-                maxLength={isAdmin ? 200 : 30}
+                maxLength={isAdmin ? 5000 : 30}
                 className="flex-1 bg-card border-card-border"
                 autoComplete="off"
               />
