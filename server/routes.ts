@@ -333,7 +333,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/user/change-password", requireSession, async (req, res) => {
     const schema = z.object({
-      totpCode: z.string().length(6),
+      totpCode: z.string().optional(),
       newPassword: z.string().min(4),
     });
     const parsed = schema.safeParse(req.body);
@@ -342,12 +342,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.getUser(req.session.userId!);
     if (!user) return res.status(404).json({ error: "用户不存在" });
 
-    if (!user.totpSecret || !user.totpEnabled) {
-      return res.status(400).json({ error: "请先绑定双重认证" });
+    if (user.totpEnabled && user.totpSecret) {
+      if (!parsed.data.totpCode || parsed.data.totpCode.length !== 6) {
+        return res.status(400).json({ error: "请输入6位验证码" });
+      }
+      const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: "base32", token: parsed.data.totpCode, window: 1 });
+      if (!isValid) return res.status(400).json({ error: "验证码错误" });
     }
-
-    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: "base32", token: parsed.data.totpCode, window: 1 });
-    if (!isValid) return res.status(400).json({ error: "验证码错误" });
 
     await storage.updateUserPassword(user.id, parsed.data.newPassword);
     res.json({ ok: true });
