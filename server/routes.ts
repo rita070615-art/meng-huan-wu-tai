@@ -12,14 +12,54 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 
-async function fireWebhooks(urls: (string | null | undefined)[], payload: object): Promise<void> {
+function formatWebhookContent(payload: Record<string, unknown>): string {
+  const type = payload.type as string;
+  const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  if (type === "上庄抽水") {
+    return [
+      `🎰 **上庄抽水** \`${ts}\``,
+      `厨师：${payload.player}（${payload.bankerOption}）`,
+      `本局上限：${payload.bankerMaxBet}　续庄：${payload.carryOver}`,
+      `抽水率：${payload.pumpRate}%　抽水：${payload.pumpAmount}`,
+      `下庄抽水率：${payload.exitPumpRate}%`,
+    ].join("\n");
+  }
+  if (type === "下庄抽水") {
+    return [
+      `💸 **下庄抽水** \`${ts}\``,
+      `厨师：${payload.player}`,
+      `毛利润：${payload.grossProfit}　抽水率：${payload.exitPumpRate}%`,
+      `抽水：${payload.exitPumpAmount}　净回款：${payload.netBankerReturn}`,
+    ].join("\n");
+  }
+  if (type === "充值") {
+    return [
+      `✅ **充值** \`${ts}\``,
+      `管理：${payload.admin}`,
+      `玩家：${payload.player}`,
+      `金额：+${payload.amount}　（${payload.balanceBefore} → ${payload.balanceAfter}）`,
+    ].join("\n");
+  }
+  if (type === "提现") {
+    return [
+      `🔴 **提现** \`${ts}\``,
+      `管理：${payload.admin}`,
+      `玩家：${payload.player}`,
+      `金额：-${payload.amount}　（${payload.balanceBefore} → ${payload.balanceAfter}）`,
+    ].join("\n");
+  }
+  return `**${type}** \`${ts}\`\n${JSON.stringify(payload, null, 2)}`;
+}
+
+async function fireWebhooks(urls: (string | null | undefined)[], payload: Record<string, unknown>): Promise<void> {
+  const content = formatWebhookContent(payload);
   for (const url of urls) {
     if (!url || !url.startsWith("http")) continue;
     try {
       await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ content }),
         signal: AbortSignal.timeout(5000),
       });
     } catch (_) {}
