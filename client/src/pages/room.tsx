@@ -828,15 +828,6 @@ export default function RoomPage() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-xs text-muted-foreground"
-                  onClick={() => { setOptionPoints({}); setDoubleMode(false); }}
-                  data-testid="button-admin-reset-points"
-                >
-                  清空
-                </Button>
-                <Button
-                  size="sm"
                   variant="destructive"
                   className="h-6 px-2 text-xs ml-auto"
                   onClick={() => setCancelRoundConfirm(true)}
