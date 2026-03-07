@@ -603,9 +603,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Effective fund = after deducting 上庄抽水 from new portion only
     const effectiveFundDisplay = (Math.floor(newAmount * (1 - pumpRate / 100)) + carryOver).toLocaleString();
     const startContent = [
-      `庄：${bankerNickStr}（${bankerOptLabel}）`,
+      `厨师：${bankerNickStr}（${bankerOptLabel}）`,
       `本局可点：${playableOpts}`,
-      `标庄金额：${effectiveFundDisplay}`,
+      `本轮厨房预算：${effectiveFundDisplay}`,
     ].join("\n");
     const msg = await storage.createMessage({
       roomId: req.params.id,
