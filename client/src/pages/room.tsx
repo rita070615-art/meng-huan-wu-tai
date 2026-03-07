@@ -632,20 +632,6 @@ export default function RoomPage() {
                     />
                   </div>
                 </div>
-                {bankerUserId && (
-                  <div className="mb-2">
-                    <label className="text-xs text-muted-foreground">续庄携带（上轮余额，不重复扣款）</label>
-                    <Input
-                      data-testid="input-carry-over"
-                      type="number"
-                      min={0}
-                      value={carryOver}
-                      onChange={e => setCarryOver(e.target.value)}
-                      placeholder="0（新局填0）"
-                      className="mt-0.5 h-7 text-xs w-40"
-                    />
-                  </div>
-                )}
                 {/* Odds & pump rate */}
                 <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
                   <div className="flex items-center justify-between mb-1.5">
@@ -696,27 +682,21 @@ export default function RoomPage() {
                       return;
                     }
                     const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
-                    const carryOverNum = carryOver ? Number(carryOver) : 0;
-                    if (bu) {
-                      const cap = Number(bankerMaxBet);
-                      const needed = Math.max(0, cap - carryOverNum);
-                      if (bu.balance < needed) {
-                        toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要追加：${needed.toLocaleString()}`, variant: "destructive" });
-                        return;
-                      }
+                    if (bu && bu.balance < Number(bankerMaxBet)) {
+                      toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要：${Number(bankerMaxBet).toLocaleString()}`, variant: "destructive" });
+                      return;
                     }
                     startRoundMutation.mutate({
                       bankerUserId: bankerUserId || undefined,
                       bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
                       bankerOption: bankerOption || undefined,
                       bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
-                      carryOver: carryOverNum,
+                      carryOver: 0,
                       pumpRate: pumpRate ? Number(pumpRate) : undefined,
                       playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
                       options: defaultOpts,
                     });
                     setOptionRatios({ A: "", B: "", C: "", D: "" });
-                    setCarryOver("");
                     setPumpRate("");
                     setPlayerPumpRate("");
                   }}
