@@ -1158,6 +1158,29 @@ function BotAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
+  const [editingBalanceId, setEditingBalanceId] = useState<string | null>(null);
+  const [editingBalanceValue, setEditingBalanceValue] = useState("");
+
+  const balanceMutation = useMutation({
+    mutationFn: ({ id, balance }: { id: string; balance: number }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/balance`, { balance }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setEditingBalanceId(null);
+      toast({ title: "积分已更新" });
+    },
+    onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
+  });
+
+  const commitBalanceEdit = (id: string) => {
+    const val = parseInt(editingBalanceValue, 10);
+    if (isNaN(val) || val < 0) {
+      toast({ title: "请输入有效积分数（≥0）", variant: "destructive" });
+      return;
+    }
+    balanceMutation.mutate({ id, balance: val });
+  };
+
   const handleToggleEnabled = () => {
     if (!settings) return;
     updateSettingsMutation.mutate({
@@ -1286,10 +1309,42 @@ function BotAdmin() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{u.username}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Coins className="w-3 h-3 text-yellow-500" />
-                    {u.balance.toLocaleString()} 积分
-                  </p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <Coins className="w-3 h-3 text-yellow-500 shrink-0" />
+                    {editingBalanceId === u.id ? (
+                      <form
+                        className="flex items-center gap-1"
+                        onSubmit={(e) => { e.preventDefault(); commitBalanceEdit(u.id); }}
+                      >
+                        <Input
+                          data-testid={`input-shill-balance-${u.id}`}
+                          type="number"
+                          min={0}
+                          value={editingBalanceValue}
+                          onChange={(e) => setEditingBalanceValue(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setEditingBalanceId(null); }}
+                          autoFocus
+                          className="h-6 text-xs w-28 px-2"
+                        />
+                        <button type="submit" className="text-green-500 hover:text-green-400" data-testid={`button-save-shill-balance-${u.id}`}>
+                          <Check className="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" onClick={() => setEditingBalanceId(null)} className="text-muted-foreground hover:text-foreground">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        data-testid={`text-shill-balance-${u.id}`}
+                        className="text-xs text-muted-foreground hover:text-yellow-400 transition-colors cursor-text"
+                        title="点击编辑积分"
+                        onClick={() => { setEditingBalanceId(u.id); setEditingBalanceValue(String(u.balance)); }}
+                      >
+                        {u.balance.toLocaleString()} 积分
+                        <Edit2 className="w-2.5 h-2.5 inline ml-1 opacity-50" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <Button
                   size="sm"
