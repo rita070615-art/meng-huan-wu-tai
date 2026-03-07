@@ -36,6 +36,10 @@ export default function RoomPage() {
   const [bankerOption, setBankerOption] = useState("");
   const [bankerMaxBet, setBankerMaxBet] = useState("");
   const [carryOver, setCarryOver] = useState("");
+  const [addToLimit, setAddToLimit] = useState("");
+  const [persistedBanker, setPersistedBanker] = useState<{
+    userId: string; nickname: string; option: string; bankerReturn: number; pumpRate: string; playerPumpRate: string;
+  } | null>(null);
   const [pumpRate, setPumpRate] = useState("");
   const [playerPumpRate, setPlayerPumpRate] = useState("");
   const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
@@ -148,6 +152,18 @@ export default function RoomPage() {
           setOptionPoints({});
           setSelectedOptions(new Set());
           setDoubleMode(false);
+          // Auto-persist banker for next round
+          if (data.round?.bankerUserId && data.round?.bankerOption) {
+            setPersistedBanker({
+              userId: data.round.bankerUserId,
+              nickname: data.round.bankerNickname || data.round.bankerUserId,
+              option: data.round.bankerOption,
+              bankerReturn: data.bankerReturn ?? 0,
+              pumpRate: data.pumpRate != null ? String(data.pumpRate) : "",
+              playerPumpRate: data.playerPumpRate != null ? String(data.playerPumpRate) : "",
+            });
+            setAddToLimit("");
+          }
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -245,7 +261,7 @@ export default function RoomPage() {
   const startRoundMutation = useMutation({
     mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; options?: object }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
-    onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); },
+    onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); setAddToLimit(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
   });
 
@@ -458,174 +474,259 @@ export default function RoomPage() {
           </div>
 
           {/* Pre-round: banker setup always visible */}
-          {isAdmin && !currentRound && (
-            <div className="px-3 py-3 border-t border-border/50 bg-primary/3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-primary">开局设置（必须选主厨）</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <div className="min-w-0">
-                  <label className="text-xs text-muted-foreground flex items-center gap-1">
-                    选主厨 <span className="text-red-500">*</span>
-                    <button type="button" onClick={() => refetchOnlineUsers()} className="text-[10px] text-primary hover:underline">刷新</button>
-                  </label>
-                  <select
-                    data-testid="select-banker-user"
-                    value={bankerUserId}
-                    onChange={e => { setBankerUserId(e.target.value); if (!e.target.value) { setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); } }}
-                    className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground truncate"
-                  >
-                    <option value="">— 请选择主厨 —</option>
-                    {(onlineUsers || []).map(u => (
-                      <option key={u.id} value={u.id}>{u.nickname || u.username}（{u.balance.toLocaleString()}）</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="min-w-0">
-                  <label className="text-xs text-muted-foreground">主厨属性 <span className="text-red-500">*</span></label>
-                  <select
-                    data-testid="select-banker-option"
-                    value={bankerOption}
-                    onChange={e => setBankerOption(e.target.value)}
-                    disabled={!bankerUserId}
-                    className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
-                  >
-                    <option value="">选择属性</option>
-                    {[{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"A",label:"力量"},{key:"D",label:"耐力"}].map(o => (
-                      <option key={o.key} value={o.key}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="min-w-0">
-                  <label className="text-xs text-muted-foreground">主厨上限 <span className="text-red-500">*</span></label>
-                  <Input
-                    data-testid="input-banker-max-bet"
-                    type="number"
-                    min={1}
-                    value={bankerMaxBet}
-                    onChange={e => setBankerMaxBet(e.target.value)}
-                    disabled={!bankerUserId}
-                    placeholder="如 10000"
-                    className="mt-0.5 h-7 text-xs"
-                  />
-                </div>
-              </div>
-              {bankerUserId && (
-                <div className="mb-2">
-                  <label className="text-xs text-muted-foreground">续庄携带（上轮余额，不重复扣款）</label>
-                  <Input
-                    data-testid="input-carry-over"
-                    type="number"
-                    min={0}
-                    value={carryOver}
-                    onChange={e => setCarryOver(e.target.value)}
-                    placeholder="0（新局填0）"
-                    className="mt-0.5 h-7 text-xs w-40"
-                  />
-                </div>
-              )}
-              {/* Odds & pump rate */}
-              <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-muted-foreground">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">厨房服务费%</span>
+          {isAdmin && !currentRound && (() => {
+            const optLabels: Record<string, string> = { B: "体力", C: "法力", A: "力量", D: "耐力" };
+            const optColors: Record<string, string> = { B: "#22c55e", C: "#a855f7", A: "#ef4444", D: "#3b82f6" };
+            const defaultOpts = [
+              { key: "B", label: "体力", color: "#22c55e" },
+              { key: "C", label: "法力", color: "#a855f7" },
+              { key: "A", label: "力量", color: "#ef4444" },
+              { key: "D", label: "耐力", color: "#3b82f6" },
+            ].map(o => ({ ...o, ...(optionRatios[o.key] ? { ratio: Number(optionRatios[o.key]) } : {}) }));
+
+            // CONTINUING MODE: same banker carries over from last round
+            if (persistedBanker) {
+              const carryAmt = persistedBanker.bankerReturn;
+              const addAmt = addToLimit ? Number(addToLimit) : 0;
+              const totalCap = carryAmt + addAmt;
+              const activePumpRate = pumpRate !== "" ? pumpRate : persistedBanker.pumpRate;
+              const activePlayerPumpRate = playerPumpRate !== "" ? playerPumpRate : persistedBanker.playerPumpRate;
+              return (
+                <div className="px-3 py-3 border-t border-border/50 bg-amber-500/5">
+                  {/* Banker info bar */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-amber-400">继续上庄</span>
+                      <span className="text-xs font-medium text-foreground">{persistedBanker.nickname}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded font-bold" style={{ color: optColors[persistedBanker.option] || "#fff", background: `${optColors[persistedBanker.option]}22` }}>
+                        {optLabels[persistedBanker.option] || persistedBanker.option}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="button-dismiss-banker"
+                      onClick={() => { setPersistedBanker(null); setAddToLimit(""); setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); }}
+                      className="text-[11px] text-red-400 border border-red-400/40 rounded px-2 py-0.5 hover:bg-red-400/10 transition-colors"
+                    >
+                      下庄
+                    </button>
+                  </div>
+
+                  {/* Carry + add to limit */}
+                  <div className="flex items-end gap-3 mb-2">
+                    <div>
+                      <label className="text-[10px] text-muted-foreground">上把余（续庄携带）</label>
+                      <div className="mt-0.5 h-7 px-2 flex items-center text-xs bg-background/60 border border-border rounded font-mono text-amber-400 min-w-[80px]">
+                        {carryAmt.toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground">加上限（追加资金）</label>
                       <Input
-                        data-testid="input-pump-rate"
+                        data-testid="input-add-to-limit"
                         type="number"
                         min={0}
-                        max={50}
-                        value={pumpRate}
+                        value={addToLimit}
+                        onChange={e => setAddToLimit(e.target.value)}
+                        placeholder="0"
+                        className="mt-0.5 h-7 text-xs w-24"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-muted-foreground">本局上限</label>
+                      <div className="mt-0.5 h-7 px-2 flex items-center text-xs bg-background/60 border border-border rounded font-mono text-green-400 min-w-[80px]">
+                        {totalCap.toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 pb-0.5">
+                      <span className="text-[10px] text-muted-foreground">厨房抽水%</span>
+                      <Input
+                        data-testid="input-pump-rate"
+                        type="number" min={0} max={50}
+                        value={activePumpRate}
                         onChange={e => setPumpRate(e.target.value)}
                         placeholder="0"
                         className="h-6 text-xs w-12 px-1.5"
                       />
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-muted-foreground">平台服务费%</span>
-                      <Input
-                        data-testid="input-player-pump-rate"
-                        type="number"
-                        min={0}
-                        max={50}
-                        value={playerPumpRate}
-                        onChange={e => setPlayerPumpRate(e.target.value)}
-                        placeholder="0"
-                        className="h-6 text-xs w-12 px-1.5"
-                      />
-                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                    data-testid="button-admin-start-round"
+                    disabled={startRoundMutation.isPending || totalCap <= 0}
+                    title={totalCap <= 0 ? "本局上限须大于0" : ""}
+                    onClick={() => {
+                      const defaultOptsNow = defaultOpts;
+                      startRoundMutation.mutate({
+                        bankerUserId: persistedBanker.userId,
+                        bankerNickname: persistedBanker.nickname,
+                        bankerOption: persistedBanker.option,
+                        bankerMaxBet: totalCap,
+                        carryOver: carryAmt,
+                        pumpRate: activePumpRate ? Number(activePumpRate) : undefined,
+                        playerPumpRate: activePlayerPumpRate ? Number(activePlayerPumpRate) : undefined,
+                        options: defaultOptsNow,
+                      });
+                      setOptionRatios({ A: "", B: "", C: "", D: "" });
+                    }}
+                  >
+                    <Play className="w-3 h-3 mr-1" />
+                    开启下一把
+                  </Button>
+                </div>
+              );
+            }
+
+            // FRESH MODE: select banker from scratch
+            return (
+              <div className="px-3 py-3 border-t border-border/50 bg-primary/3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold text-primary">开局设置（必须选主厨）</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <div className="min-w-0">
+                    <label className="text-xs text-muted-foreground flex items-center gap-1">
+                      选主厨 <span className="text-red-500">*</span>
+                      <button type="button" onClick={() => refetchOnlineUsers()} className="text-[10px] text-primary hover:underline">刷新</button>
+                    </label>
+                    <select
+                      data-testid="select-banker-user"
+                      value={bankerUserId}
+                      onChange={e => { setBankerUserId(e.target.value); if (!e.target.value) { setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); } }}
+                      className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground truncate"
+                    >
+                      <option value="">— 请选择主厨 —</option>
+                      {(onlineUsers || []).map(u => (
+                        <option key={u.id} value={u.id}>{u.nickname || u.username}（{u.balance.toLocaleString()}）</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs text-muted-foreground">主厨属性 <span className="text-red-500">*</span></label>
+                    <select
+                      data-testid="select-banker-option"
+                      value={bankerOption}
+                      onChange={e => setBankerOption(e.target.value)}
+                      disabled={!bankerUserId}
+                      className="w-full min-w-0 mt-0.5 text-xs bg-background border border-border rounded px-2 py-1 text-foreground disabled:opacity-50"
+                    >
+                      <option value="">选择属性</option>
+                      {[{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"A",label:"力量"},{key:"D",label:"耐力"}].map(o => (
+                        <option key={o.key} value={o.key}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
+                    <label className="text-xs text-muted-foreground">主厨上限 <span className="text-red-500">*</span></label>
+                    <Input
+                      data-testid="input-banker-max-bet"
+                      type="number"
+                      min={1}
+                      value={bankerMaxBet}
+                      onChange={e => setBankerMaxBet(e.target.value)}
+                      disabled={!bankerUserId}
+                      placeholder="如 10000"
+                      className="mt-0.5 h-7 text-xs"
+                    />
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {[{key:"B",label:"体力",color:"#22c55e"},{key:"C",label:"法力",color:"#a855f7"},{key:"A",label:"力量",color:"#ef4444"},{key:"D",label:"耐力",color:"#3b82f6"}].map(o => (
-                    <div key={o.key}>
-                      <label className="text-[10px] font-medium" style={{ color: o.color }}>{o.label}</label>
-                      <Input
-                        data-testid={`input-ratio-${o.key}`}
-                        type="number"
-                        min={0}
-                        step={0.1}
-                        value={optionRatios[o.key]}
-                        onChange={e => setOptionRatios(r => ({ ...r, [o.key]: e.target.value }))}
-                        placeholder="赔率"
-                        className="h-6 text-xs mt-0.5 px-1.5"
-                      />
+                {bankerUserId && (
+                  <div className="mb-2">
+                    <label className="text-xs text-muted-foreground">续庄携带（上轮余额，不重复扣款）</label>
+                    <Input
+                      data-testid="input-carry-over"
+                      type="number"
+                      min={0}
+                      value={carryOver}
+                      onChange={e => setCarryOver(e.target.value)}
+                      placeholder="0（新局填0）"
+                      className="mt-0.5 h-7 text-xs w-40"
+                    />
+                  </div>
+                )}
+                {/* Odds & pump rate */}
+                <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">厨房服务费%</span>
+                        <Input
+                          data-testid="input-pump-rate"
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={pumpRate}
+                          onChange={e => setPumpRate(e.target.value)}
+                          placeholder="0"
+                          className="h-6 text-xs w-12 px-1.5"
+                        />
+                      </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[{key:"B",label:"体力",color:"#22c55e"},{key:"C",label:"法力",color:"#a855f7"},{key:"A",label:"力量",color:"#ef4444"},{key:"D",label:"耐力",color:"#3b82f6"}].map(o => (
+                      <div key={o.key}>
+                        <label className="text-[10px] font-medium" style={{ color: o.color }}>{o.label}</label>
+                        <Input
+                          data-testid={`input-ratio-${o.key}`}
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={optionRatios[o.key]}
+                          onChange={e => setOptionRatios(r => ({ ...r, [o.key]: e.target.value }))}
+                          placeholder="赔率"
+                          className="h-6 text-xs mt-0.5 px-1.5"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <Button
-                size="sm"
-                className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
-                data-testid="button-admin-start-round"
-                disabled={startRoundMutation.isPending || !bankerUserId || !bankerOption || !bankerMaxBet}
-                title={!bankerUserId || !bankerOption || !bankerMaxBet ? "必须选择主厨、主厨属性并设置上限" : ""}
-                onClick={() => {
-                  if (!bankerUserId || !bankerOption || !bankerMaxBet) {
-                    toast({ title: "请先选择主厨、主厨属性并设置上限", variant: "destructive" });
-                    return;
-                  }
-                  const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
-                  const carryOverNum = carryOver ? Number(carryOver) : 0;
-                  if (bu) {
-                    const cap = Number(bankerMaxBet);
-                    const needed = Math.max(0, cap - carryOverNum);
-                    if (bu.balance < needed) {
-                      toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要追加：${needed.toLocaleString()}`, variant: "destructive" });
+                <Button
+                  size="sm"
+                  className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                  data-testid="button-admin-start-round"
+                  disabled={startRoundMutation.isPending || !bankerUserId || !bankerOption || !bankerMaxBet}
+                  title={!bankerUserId || !bankerOption || !bankerMaxBet ? "必须选择主厨、主厨属性并设置上限" : ""}
+                  onClick={() => {
+                    if (!bankerUserId || !bankerOption || !bankerMaxBet) {
+                      toast({ title: "请先选择主厨、主厨属性并设置上限", variant: "destructive" });
                       return;
                     }
-                  }
-                  const defaultOpts = [
-                    { key: "B", label: "体力", color: "#22c55e" },
-                    { key: "C", label: "法力", color: "#a855f7" },
-                    { key: "A", label: "力量", color: "#ef4444" },
-                    { key: "D", label: "耐力", color: "#3b82f6" },
-                  ].map(o => ({
-                    ...o,
-                    ...(optionRatios[o.key] ? { ratio: Number(optionRatios[o.key]) } : {}),
-                  }));
-                  startRoundMutation.mutate({
-                    bankerUserId: bankerUserId || undefined,
-                    bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
-                    bankerOption: bankerOption || undefined,
-                    bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
-                    carryOver: carryOverNum,
-                    pumpRate: pumpRate ? Number(pumpRate) : undefined,
-                    playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
-                    options: defaultOpts,
-                  });
-                  setOptionRatios({ A: "", B: "", C: "", D: "" });
-                  setCarryOver("");
-                  setPumpRate("");
-                  setPlayerPumpRate("");
-                }}
-              >
-                <Play className="w-3 h-3 mr-1" />
-                开启点餐
-              </Button>
-            </div>
-          )}
+                    const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
+                    const carryOverNum = carryOver ? Number(carryOver) : 0;
+                    if (bu) {
+                      const cap = Number(bankerMaxBet);
+                      const needed = Math.max(0, cap - carryOverNum);
+                      if (bu.balance < needed) {
+                        toast({ title: `${bu.nickname || bu.username}积分不足`, description: `当前：${bu.balance.toLocaleString()}，需要追加：${needed.toLocaleString()}`, variant: "destructive" });
+                        return;
+                      }
+                    }
+                    startRoundMutation.mutate({
+                      bankerUserId: bankerUserId || undefined,
+                      bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
+                      bankerOption: bankerOption || undefined,
+                      bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
+                      carryOver: carryOverNum,
+                      pumpRate: pumpRate ? Number(pumpRate) : undefined,
+                      playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
+                      options: defaultOpts,
+                    });
+                    setOptionRatios({ A: "", B: "", C: "", D: "" });
+                    setCarryOver("");
+                    setPumpRate("");
+                    setPlayerPumpRate("");
+                  }}
+                >
+                  <Play className="w-3 h-3 mr-1" />
+                  开启点餐
+                </Button>
+              </div>
+            );
+          })()}
 
           {/* During round: points entry for winner calculation */}
           {isAdmin && currentRound && adminPanelOpen && (

@@ -875,7 +875,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
-    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg });
+    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate });
     res.json(closed);
   });
 
