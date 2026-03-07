@@ -976,8 +976,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const u = await storage.getUser(uid);
           if (!u) continue;
           const label = u.nickname || u.username;
-          const tag = u.isShill ? "（托）" : "";
-          balanceLines.push(`${label}${tag}：${u.balance.toLocaleString()}`);
+          balanceLines.push(`${label}：${u.balance.toLocaleString()}`);
         }
         if (balanceLines.length > 0) {
           const balanceContent = `📊 在场积分快照\n${balanceLines.join("\n")}`;
