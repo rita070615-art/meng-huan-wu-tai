@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean };
+type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean; shillRoomId: string | null };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -1136,7 +1136,21 @@ function BotAdmin() {
     queryKey: ["/api/admin/users"],
   });
 
+  const { data: rooms } = useQuery<Room[]>({
+    queryKey: ["/api/rooms"],
+  });
+
   const shills = users?.filter((u) => u.isShill) ?? [];
+
+  const shillRoomMutation = useMutation({
+    mutationFn: ({ id, shillRoomId }: { id: string; shillRoomId: string | null }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/shill-room`, { shillRoomId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "指定房间已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
+  });
 
   const updateSettingsMutation = useMutation({
     mutationFn: (data: { enabled: boolean; minAmount: number; maxAmount: number }) =>
@@ -1309,6 +1323,20 @@ function BotAdmin() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{u.username}</p>
+                  {/* Room assignment */}
+                  <div className="flex items-center gap-1 mt-0.5 mb-1">
+                    <select
+                      data-testid={`select-shill-room-${u.id}`}
+                      value={u.shillRoomId ?? ""}
+                      onChange={(e) => shillRoomMutation.mutate({ id: u.id, shillRoomId: e.target.value || null })}
+                      className="text-[11px] bg-background border border-border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground cursor-pointer max-w-[160px] truncate"
+                    >
+                      <option value="">🌐 全部房间</option>
+                      {rooms?.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="flex items-center gap-1 mt-0.5">
                     <Coins className="w-3 h-3 text-yellow-500 shrink-0" />
                     {editingBalanceId === u.id ? (
