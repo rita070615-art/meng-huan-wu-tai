@@ -38,10 +38,11 @@ export default function RoomPage() {
   const [carryOver, setCarryOver] = useState("");
   const [addToLimit, setAddToLimit] = useState("");
   const [persistedBanker, setPersistedBanker] = useState<{
-    userId: string; nickname: string; option: string; bankerReturn: number; pumpRate: string; playerPumpRate: string;
+    userId: string; nickname: string; option: string; bankerReturn: number; pumpRate: string; playerPumpRate: string; exitPumpRate: string;
   } | null>(null);
   const [pumpRate, setPumpRate] = useState("");
   const [playerPumpRate, setPlayerPumpRate] = useState("");
+  const [exitPumpRate, setExitPumpRate] = useState("");
   const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
   const [cancelRoundConfirm, setCancelRoundConfirm] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -163,6 +164,7 @@ export default function RoomPage() {
               bankerReturn: data.bankerReturn ?? 0,
               pumpRate: data.pumpRate != null ? String(data.pumpRate) : "",
               playerPumpRate: data.playerPumpRate != null ? String(data.playerPumpRate) : "",
+              exitPumpRate: data.exitPumpRate != null ? String(data.exitPumpRate) : "",
             });
             setAddToLimit("");
           }
@@ -261,7 +263,7 @@ export default function RoomPage() {
   });
 
   const startRoundMutation = useMutation({
-    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; options?: object }) =>
+    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; exitPumpRate?: number; options?: object }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
     onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); setAddToLimit(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
@@ -535,6 +537,7 @@ export default function RoomPage() {
               // Pump is only deducted from the new portion (追加资金), not the carry-over
               const effectiveDisplayCap = carryAmt + Math.floor(addAmt * (1 - activePumpNum / 100));
               const activePlayerPumpRate = playerPumpRate !== "" ? playerPumpRate : persistedBanker.playerPumpRate;
+              const activeExitPumpRate = exitPumpRate !== "" ? exitPumpRate : persistedBanker.exitPumpRate;
               return (
                 <div className="px-3 py-3 border-t border-border/50 bg-amber-500/5">
                   {/* Banker info bar */}
@@ -593,6 +596,17 @@ export default function RoomPage() {
                         className="h-6 text-xs w-12 px-1.5"
                       />
                     </div>
+                    <div className="flex items-center gap-1 pb-0.5">
+                      <span className="text-[10px] text-muted-foreground">下庄抽水%</span>
+                      <Input
+                        data-testid="input-exit-pump-rate"
+                        type="number" min={0} max={50}
+                        value={activeExitPumpRate}
+                        onChange={e => setExitPumpRate(e.target.value)}
+                        placeholder="0"
+                        className="h-6 text-xs w-12 px-1.5"
+                      />
+                    </div>
                   </div>
 
                   <Button
@@ -611,6 +625,7 @@ export default function RoomPage() {
                         carryOver: carryAmt,
                         pumpRate: activePumpRate ? Number(activePumpRate) : undefined,
                         playerPumpRate: activePlayerPumpRate ? Number(activePlayerPumpRate) : undefined,
+                        exitPumpRate: activeExitPumpRate ? Number(activeExitPumpRate) : undefined,
                         options: defaultOptsNow,
                       });
                       setOptionRatios({ A: "", B: "", C: "", D: "" });
@@ -694,6 +709,19 @@ export default function RoomPage() {
                           className="h-6 text-xs w-12 px-1.5"
                         />
                       </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">下庄抽水%</span>
+                        <Input
+                          data-testid="input-exit-pump-rate-fresh"
+                          type="number"
+                          min={0}
+                          max={50}
+                          value={exitPumpRate}
+                          onChange={e => setExitPumpRate(e.target.value)}
+                          placeholder="0"
+                          className="h-6 text-xs w-12 px-1.5"
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-4 gap-1.5">
@@ -738,11 +766,13 @@ export default function RoomPage() {
                       carryOver: 0,
                       pumpRate: pumpRate ? Number(pumpRate) : undefined,
                       playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
+                      exitPumpRate: exitPumpRate ? Number(exitPumpRate) : undefined,
                       options: defaultOpts,
                     });
                     setOptionRatios({ A: "", B: "", C: "", D: "" });
                     setPumpRate("");
                     setPlayerPumpRate("");
+                    setExitPumpRate("");
                   }}
                 >
                   <Play className="w-3 h-3 mr-1" />

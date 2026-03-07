@@ -572,6 +572,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const pumpRate = req.body.pumpRate != null ? Math.max(0, Math.min(50, Number(req.body.pumpRate))) : 0;
     const playerPumpRate = req.body.playerPumpRate != null ? Math.max(0, Math.min(50, Number(req.body.playerPumpRate))) : 0;
+    const exitPumpRate = req.body.exitPumpRate != null ? Math.max(0, Math.min(50, Number(req.body.exitPumpRate))) : 0;
     const round = await storage.createBetRound({
       roomId: req.params.id,
       options,
@@ -581,6 +582,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       bankerMaxBet: bankerMaxBet ? Number(bankerMaxBet) : undefined,
       pumpRate,
       playerPumpRate,
+      exitPumpRate,
       carryOver,
     });
 
@@ -841,6 +843,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     let bankerNameDisplay = "";
     let bankerOptionDisplay = "";
     let bankerReturn = 0;
+    let exitPumpDeducted = 0;
     if (hasbanker && round.bankerUserId) {
       const banker = await storage.getUser(round.bankerUserId);
       bankerNameDisplay = round.bankerNickname || banker?.nickname || banker?.username || "未知";
@@ -851,7 +854,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (banker) {
         // Banker gets back: remaining fund (after paying winners) + all losing bets
         const remainingFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
-        bankerReturn = remainingFund + totalLosingBets;
+        const grossBankerReturn = remainingFund + totalLosingBets;
+        // Deduct exit pump rate from banker's return (下庄抽水)
+        const exitPumpRate = (round as any).exitPumpRate ?? 0;
+        exitPumpDeducted = Math.floor(grossBankerReturn * exitPumpRate / 100);
+        bankerReturn = Math.max(0, grossBankerReturn - exitPumpDeducted);
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
@@ -893,9 +900,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     let bankerPLLine = "";
     if (hasbanker) {
-      // Pump only deducted from new portion (not carryOver)
       const bankerNet = bankerReturn - (round.bankerMaxBet as number);
-      bankerPLLine = `本餐厨师（${bankerNameDisplay}）抽水: ${pumpDeducted.toLocaleString()} | 本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
+      const exitPumpStr = exitPumpDeducted > 0 ? ` | 下庄抽水: ${exitPumpDeducted.toLocaleString()}` : "";
+      bankerPLLine = `本餐厨师（${bankerNameDisplay}）上庄抽水: ${pumpDeducted.toLocaleString()}${exitPumpStr} | 本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
     }
 
     // Build new summary message
@@ -951,7 +958,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
-    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate });
+    const exitPumpRateBcast = (round as any).exitPumpRate ?? 0;
+    broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate, exitPumpRate: exitPumpRateBcast });
 
     // Post a balance board: every user currently connected to this room + shills assigned here
     try {

@@ -53,6 +53,7 @@ export const betRounds = pgTable("bet_rounds", {
   bankerMaxBet: integer("banker_max_bet"),
   pumpRate: integer("pump_rate").notNull().default(0),
   playerPumpRate: integer("player_pump_rate").notNull().default(0),
+  exitPumpRate: integer("exit_pump_rate").notNull().default(0),
   carryOver: integer("carry_over").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   closedAt: timestamp("closed_at"),
