@@ -7,6 +7,10 @@ import { z } from "zod";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import * as XLSX from "xlsx";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import express from "express";
 
 declare module "express-session" {
   interface SessionData {
@@ -102,6 +106,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     next();
   };
+
+  // Serve uploaded media files statically
+  const uploadsDir = path.resolve(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  app.use("/uploads", express.static(uploadsDir));
+
+  // Multer setup — disk storage, no size limit
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+      },
+    }),
+  });
 
   const requireAdmin = (req: Request, res: Response, next: Function) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -416,6 +436,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       username: sender.nickname || sender.username,
       content: parsed.data.content,
       type: "user",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: msg });
+    res.json(msg);
+  });
+
+  // MEDIA UPLOAD — admin only, images and videos, no size limit
+  app.post("/api/rooms/:id/upload-media", requireAdmin, upload.single("file"), async (req: any, res) => {
+    if (!req.file) return res.status(400).json({ error: "未收到文件" });
+    const mime = req.file.mimetype || "";
+    const isImage = mime.startsWith("image/");
+    const isVideo = mime.startsWith("video/");
+    if (!isImage && !isVideo) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: "只支持图片或视频文件" });
+    }
+    const mediaType = isImage ? "image" : "video";
+    const mediaUrl = `/uploads/${req.file.filename}`;
+    const sender = await storage.getUser(req.session.userId!);
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      userId: req.session.userId,
+      username: sender?.nickname || sender?.username || "管理员",
+      content: mediaUrl,
+      type: mediaType,
     });
     broadcast(req.params.id, { type: "MESSAGE", message: msg });
     res.json(msg);

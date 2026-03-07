@@ -8,7 +8,7 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard, TrendingUp, Trophy, Lock } from "lucide-react";
+import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard, TrendingUp, Trophy, Lock, ImageIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
@@ -48,6 +48,8 @@ export default function RoomPage() {
   const messageInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [mediaUploading, setMediaUploading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsDestroyedRef = useRef(false);
@@ -321,6 +323,30 @@ export default function RoomPage() {
     e.preventDefault();
     if (!messageText.trim()) return;
     sendMutation.mutate(messageText.trim());
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !roomId) return;
+    setMediaUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/rooms/${roomId}/upload-media`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error || "上传失败", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "上传失败，请稍后重试", variant: "destructive" });
+    } finally {
+      setMediaUploading(false);
+      if (mediaInputRef.current) mediaInputRef.current.value = "";
+    }
   };
 
   const handleBet = () => {
@@ -897,6 +923,17 @@ export default function RoomPage() {
               </div>
             )}
             <form onSubmit={handleSend} className="p-3 flex gap-2">
+              {/* Hidden file input for media upload (admin only) */}
+              {isAdmin && (
+                <input
+                  ref={mediaInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  data-testid="input-media-upload"
+                  onChange={handleMediaUpload}
+                />
+              )}
               <Input
                 ref={messageInputRef}
                 data-testid="input-message"
@@ -909,6 +946,22 @@ export default function RoomPage() {
                 className="flex-1 bg-card border-card-border"
                 autoComplete="off"
               />
+              {isAdmin && (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="outline"
+                  data-testid="button-upload-media"
+                  disabled={mediaUploading}
+                  title="发送图片/视频"
+                  onClick={() => mediaInputRef.current?.click()}
+                >
+                  {mediaUploading
+                    ? <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    : <ImageIcon className="w-4 h-4" />
+                  }
+                </Button>
+              )}
               <Button
                 type="submit"
                 size="icon"
@@ -1274,7 +1327,9 @@ function ChatMessage({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
-  const isBet = msg.type === "bet" || (msg.type !== "system" && msg.username != null && (msg.content.startsWith(`${msg.username}:`) || msg.content.startsWith(`${msg.username}：`)));
+  const isImage = msg.type === "image";
+  const isVideo = msg.type === "video";
+  const isBet = msg.type === "bet" || (msg.type !== "system" && !isImage && !isVideo && msg.username != null && (msg.content.startsWith(`${msg.username}:`) || msg.content.startsWith(`${msg.username}：`)));
   const isOwn = msg.userId === currentUserId;
   const hasMention = msg.content.includes("@");
   const mentionsMe = currentUserNickname && msg.content.toLowerCase().includes(`@${currentUserNickname.toLowerCase()}`);
@@ -1300,6 +1355,41 @@ function ChatMessage({
             </span>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isImage || isVideo) {
+    return (
+      <div className="flex flex-col items-start gap-0.5 my-1">
+        <span className="text-xs text-muted-foreground ml-1">{msg.username}</span>
+        <div className="rounded-2xl overflow-hidden max-w-[75vw] md:max-w-xs border border-border/40 shadow-sm">
+          {isImage ? (
+            <a href={msg.content} target="_blank" rel="noopener noreferrer">
+              <img
+                src={msg.content}
+                alt="图片"
+                className="block max-w-full max-h-72 object-contain cursor-zoom-in"
+                data-testid={`img-media-${msg.id}`}
+              />
+            </a>
+          ) : (
+            <video
+              src={msg.content}
+              controls
+              className="block max-w-full max-h-72"
+              data-testid={`video-media-${msg.id}`}
+            />
+          )}
+        </div>
+        {isAdmin && onDelete && (
+          <button
+            className="ml-1 text-[10px] text-red-400 hover:text-red-500 transition-colors"
+            onClick={() => onDelete(msg.id)}
+          >
+            删除
+          </button>
+        )}
       </div>
     );
   }
