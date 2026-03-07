@@ -35,7 +35,7 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
   if (type === "充值") {
     return [
       `✅ **充值** \`${ts}\``,
-      `管理：${payload.admin}`,
+      `操作人：${payload.admin}`,
       `玩家：${payload.player}`,
       `金额：+${payload.amount}　（${payload.balanceBefore} → ${payload.balanceAfter}）`,
     ].join("\n");
@@ -43,7 +43,7 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
   if (type === "提现") {
     return [
       `🔴 **提现** \`${ts}\``,
-      `管理：${payload.admin}`,
+      `操作人：${payload.admin}`,
       `玩家：${payload.player}`,
       `金额：-${payload.amount}　（${payload.balanceBefore} → ${payload.balanceAfter}）`,
     ].join("\n");
