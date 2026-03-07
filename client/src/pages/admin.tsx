@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, Globe
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -1127,21 +1127,11 @@ function BotAdmin() {
   const { toast } = useToast();
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
-  const [webhookUrl1, setWebhookUrl1] = useState("");
-  const [webhookUrl2, setWebhookUrl2] = useState("");
-  const [webhookUrl3, setWebhookUrl3] = useState("");
 
   const { data: settings, isLoading: settingsLoading } = useQuery<BotSettings>({
     queryKey: ["/api/admin/bot-settings"],
   });
 
-  useEffect(() => {
-    if (settings) {
-      setWebhookUrl1((settings as any).webhookUrl1 ?? "");
-      setWebhookUrl2((settings as any).webhookUrl2 ?? "");
-      setWebhookUrl3((settings as any).webhookUrl3 ?? "");
-    }
-  }, [settings?.id]);
 
   const { data: users, isLoading: usersLoading } = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -1230,17 +1220,6 @@ function BotAdmin() {
     updateSettingsMutation.mutate({ enabled: settings.enabled, minAmount: min, maxAmount: max });
   };
 
-  const handleSaveWebhooks = () => {
-    if (!settings) return;
-    updateSettingsMutation.mutate({
-      enabled: settings.enabled,
-      minAmount: settings.minAmount,
-      maxAmount: settings.maxAmount,
-      webhookUrl1,
-      webhookUrl2,
-      webhookUrl3,
-    } as any);
-  };
 
   return (
     <div className="space-y-6">
@@ -1323,62 +1302,6 @@ function BotAdmin() {
             </div>
           </div>
         ) : null}
-      </div>
-
-      {/* Webhook Settings */}
-      <div className="bg-card border border-card-border rounded-lg p-5">
-        <h2 className="font-semibold mb-1 flex items-center gap-2">
-          <Globe className="w-4 h-4 text-blue-400" />
-          Webhook 通知设置
-        </h2>
-        <p className="text-xs text-muted-foreground mb-4">
-          以下事件将向配置的 URL 发送 POST 请求（JSON）：上庄抽水、下庄抽水、充值、提现。充值/提现通知中包含操作管理员信息。
-        </p>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">上庄 / 下庄抽水 URL</Label>
-            <Input
-              data-testid="input-webhook-url-1"
-              type="url"
-              value={webhookUrl1}
-              onChange={e => setWebhookUrl1(e.target.value)}
-              placeholder="https://example.com/webhook/pump"
-              className="h-9 text-sm font-mono"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">充值 URL</Label>
-            <Input
-              data-testid="input-webhook-url-2"
-              type="url"
-              value={webhookUrl2}
-              onChange={e => setWebhookUrl2(e.target.value)}
-              placeholder="https://example.com/webhook/deposit"
-              className="h-9 text-sm font-mono"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">提现 URL</Label>
-            <Input
-              data-testid="input-webhook-url-3"
-              type="url"
-              value={webhookUrl3}
-              onChange={e => setWebhookUrl3(e.target.value)}
-              placeholder="https://example.com/webhook/withdraw"
-              className="h-9 text-sm font-mono"
-            />
-          </div>
-          <Button
-            size="sm"
-            data-testid="button-save-webhooks"
-            onClick={handleSaveWebhooks}
-            disabled={updateSettingsMutation.isPending || !settings}
-            className="mt-1"
-          >
-            <Check className="w-3.5 h-3.5 mr-1.5" />
-            保存 Webhook 设置
-          </Button>
-        </div>
       </div>
 
       <div className="bg-card border border-card-border rounded-lg p-5">
