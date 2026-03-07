@@ -511,9 +511,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const options = req.body.options || defaultOptions;
     const { bankerUserId, bankerNickname, bankerOption, bankerMaxBet } = req.body;
 
-    // Banker is now required
-    if (!bankerUserId || !bankerMaxBet) {
-      return res.status(400).json({ error: "必须选择主厨并设置上限才能开启点餐" });
+    // Banker + banker attribute are required
+    if (!bankerUserId || !bankerMaxBet || !bankerOption) {
+      return res.status(400).json({ error: "必须选择主厨、主厨属性并设置上限才能开启点餐" });
     }
 
     const carryOver = req.body.carryOver != null ? Math.max(0, Number(req.body.carryOver)) : 0;
@@ -660,77 +660,91 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const options = round.options as Array<{ key: string; label: string; color: string; ratio?: number }>;
 
-    // Determine winner: from optionPoints (highest score) or directly from winnerOption
-    let winnerOptionKey: string;
+    // Determine winnerOptionKey for DB storage:
+    // With banker-vs-player scoring, the banker's option is the reference point.
+    // winnerOptionKey stores whichever option had the highest score (for history display).
     const optionPoints = parsed.data.optionPoints;
+    let winnerOptionKey: string;
     if (optionPoints && Object.keys(optionPoints).length > 0) {
+      // Use the highest-scoring option for record display; payouts are per-bet vs banker's score
       const sorted = options
         .filter(o => optionPoints[o.key] != null)
         .sort((a, b) => (optionPoints[b.key] ?? 0) - (optionPoints[a.key] ?? 0));
-      if (!sorted.length) return res.status(400).json({ error: "No valid option points" });
-      winnerOptionKey = sorted[0].key;
+      winnerOptionKey = sorted.length > 0 ? sorted[0].key : (round.bankerOption || options[0]?.key || "A");
     } else if (parsed.data.winnerOption) {
       winnerOptionKey = parsed.data.winnerOption;
+    } else if (round.bankerOption) {
+      winnerOptionKey = round.bankerOption;
     } else {
-      return res.status(400).json({ error: "Must provide winnerOption or optionPoints" });
+      return res.status(400).json({ error: "Must provide optionPoints or winnerOption" });
     }
 
     const closed = await storage.closeBetRound(round.id, winnerOptionKey);
     const roundBets = await storage.getBetsForRound(round.id);
 
-    const winnerOpt = options.find((o) => o.key === winnerOptionKey);
     // roundBets comes desc(createdAt), reverse for chronological (oldest = highest priority)
     const roundBetsChron = [...roundBets].reverse();
-    const winners = roundBetsChron.filter((b) => b.option === winnerOptionKey);
-    const totalPool = roundBets.reduce((s, b) => s + b.amount, 0);
     const pumpRate = (round as any).pumpRate ?? 0;           // 厨房服务费率
     const playerPumpRate = (round as any).playerPumpRate ?? 0; // 平台服务费率
-    const useFixedOdds = options.some(o => o.ratio != null && o.ratio > 0);
     const hasbanker = !!(round.bankerUserId && round.bankerMaxBet);
+    const carryOverAmt = (round as any).carryOver ?? 0;
+    const newAmount = round.bankerMaxBet ? Math.max(0, (round.bankerMaxBet as number) - carryOverAmt) : 0;
 
-    // 上庄抽水：开局时已扣 bankerMaxBet，实际可用于赔付的资金 = floor(bankerMaxBet × (1 - pumpRate%))
-    const effectiveBankerFund = (hasbanker && round.bankerMaxBet)
-      ? Math.floor((round.bankerMaxBet as number) * (1 - pumpRate / 100))
+    // Effective banker fund: pump only on the new (non-carryOver) portion
+    const pumpDeducted = Math.floor(newAmount * pumpRate / 100);
+    const effectiveBankerFund = hasbanker
+      ? Math.floor(newAmount * (1 - pumpRate / 100)) + carryOverAmt
       : Infinity;
-    // Track remaining banker funds (only relevant in fixed-odds with banker)
-    let bankerFund = (useFixedOdds && hasbanker) ? effectiveBankerFund : Infinity;
+
+    // ——— New banker-vs-player scoring payout logic ———
+    // Banker's option score is the reference. Each player option's score is compared against it.
+    // Strict greater-than wins; tie or lower = player loses.
+    // Win with 9 points → 3× payout (net 2×); other wins → 2× payout (net 1×).
+    // doubleMultiplier (庄翻倍) multiplies the ratio.
+    // Losing bets go to banker; banker returns remaining fund + losing bets.
+
+    const bankerOptionKey = round.bankerOption || "";
+    const bankerScore = optionPoints ? (optionPoints[bankerOptionKey] ?? null) : null;
 
     let totalPayout = 0;
-    // Track per-bet actual payout for summary (betId -> payout)
     const betPayouts = new Map<string, number>();
+    let totalNetWinsPaid = 0; // Sum of net-win amounts paid from banker's fund
+    let totalLosingBets = 0;  // Sum of all losing bets (goes to banker)
 
-    if (useFixedOdds) {
-      const ratio = winnerOpt?.ratio ?? 1;
-      for (const bet of winners) {
-        const user = await storage.getUser(bet.userId);
-        if (!user) { betPayouts.set(bet.id, 0); continue; }
-        const gross = Math.floor(bet.amount * ratio * doubleMultiplier);
-        // 下庄抽水：只抽盈利部分
-        const profit = gross - bet.amount;
-        const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
-        const fullPayout = gross - pump;
-        // Cap payout by remaining banker fund
-        const payout = Math.min(fullPayout, bankerFund);
-        betPayouts.set(bet.id, payout);
-        if (payout > 0) {
-          totalPayout += payout;
-          bankerFund -= payout;
-          await storage.updateUserBalance(bet.userId, user.balance + payout);
-        }
+    for (const bet of roundBetsChron) {
+      if (bet.option === bankerOptionKey) {
+        // Banker's own option bets shouldn't exist (blocked), but skip if present
+        betPayouts.set(bet.id, 0);
+        continue;
       }
-    } else {
-      // Parimutuel: share pool proportionally among winners; 下庄抽水只抽盈利
-      const winnerPool = winners.reduce((s, b) => s + b.amount, 0);
-      for (const bet of winners) {
-        const user = await storage.getUser(bet.userId);
-        if (!user) { betPayouts.set(bet.id, 0); continue; }
-        const gross = winnerPool > 0 ? Math.floor((bet.amount / winnerPool) * totalPool * doubleMultiplier) : 0;
-        const profit = gross - bet.amount;
-        const pump = profit > 0 ? Math.floor(profit * playerPumpRate / 100) : 0;
-        const payout = Math.max(0, gross - pump);
+
+      const playerScore = optionPoints ? (optionPoints[bet.option] ?? 0) : 0;
+      const effectiveBankerScore = bankerScore ?? 0;
+      const playerWins = playerScore > effectiveBankerScore; // Strict greater-than; tie = banker wins
+
+      if (playerWins) {
+        const baseRatio = playerScore === 9 ? 3 : 2;
+        const effectiveRatio = baseRatio * doubleMultiplier;
+        const gross = bet.amount * effectiveRatio; // Total player receives (including stake)
+        const netWin = gross - bet.amount;          // Pure profit above stake
+        const pump = netWin > 0 ? Math.floor(netWin * playerPumpRate / 100) : 0;
+        const netWinAfterPump = netWin - pump;
+        // Cap by remaining available banker fund
+        const availableFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
+        const actualNetWin = Math.min(netWinAfterPump, availableFund);
+        const payout = bet.amount + actualNetWin; // Player gets stake back + net win
+
         betPayouts.set(bet.id, payout);
         totalPayout += payout;
-        await storage.updateUserBalance(bet.userId, user.balance + payout);
+        totalNetWinsPaid += actualNetWin;
+
+        const user = await storage.getUser(bet.userId);
+        if (user && payout > 0) {
+          await storage.updateUserBalance(bet.userId, user.balance + payout);
+        }
+      } else {
+        betPayouts.set(bet.id, 0);
+        totalLosingBets += bet.amount;
       }
     }
 
@@ -749,7 +763,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }).filter(Boolean).join(" ")
       : options.map(o => o.label).join(" ");
 
-    // Banker info
+    // Banker info and return
     let bankerNameDisplay = "";
     let bankerOptionDisplay = "";
     let bankerReturn = 0;
@@ -761,15 +775,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         bankerOptionDisplay = bankerOpt?.label || round.bankerOption;
       }
       if (banker) {
-        bankerReturn = useFixedOdds
-          ? (bankerFund === Infinity ? 0 : Math.max(0, bankerFund))
-          : effectiveBankerFund;
+        // Banker gets back: remaining fund (after paying winners) + all losing bets
+        const remainingFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
+        bankerReturn = remainingFund + totalLosingBets;
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
         }
       }
-    } else {
-      // Non-banker return (already handled above in old code if needed — no-op for no banker)
     }
 
     // Per-player net P&L for summary
@@ -779,42 +791,52 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     for (const uid of playerIds) {
       const playerBets = roundBetsChron.filter(b => b.userId === uid);
       const totalStake = playerBets.reduce((s, b) => s + b.amount, 0);
-      let totalWon = 0;
-      for (const b of playerBets) {
-        if (b.option === winnerOptionKey) {
-          totalWon += betPayouts.get(b.id) ?? 0;
-        }
-      }
-      const net = totalWon - totalStake; // net win/loss (positive = won, negative = lost)
+      // payout includes stake returned; net = payout - stake (0 if lost)
+      const totalReceived = playerBets.reduce((s, b) => s + (betPayouts.get(b.id) ?? 0), 0);
+      const net = totalReceived - totalStake;
       const user = await storage.getUser(uid);
       const finalBalance = user?.balance ?? 0;
       const name = playerBets[0].nickname || playerBets[0].username;
+      // Show each player's bet option + score vs banker score
+      const betDetails = playerBets.map(b => {
+        const opt = options.find(o => o.key === b.option);
+        const pScore = optionPoints ? (optionPoints[b.option] ?? "?") : "?";
+        const didWin = (betPayouts.get(b.id) ?? 0) > b.amount;
+        const is9Win = didWin && pScore === 9;
+        const tag = didWin ? (is9Win ? "九点胜" : "胜") : "负";
+        return `${opt?.label || b.option}${pScore}(${tag})`;
+      }).join(" ");
       const sign = net >= 0 ? "+" : "";
-      playerLines.push(`${name}: ${sign}${net.toLocaleString()} 余: ${finalBalance.toLocaleString()}`);
+      playerLines.push(`${name} [${betDetails}]: ${sign}${net.toLocaleString()} 余: ${finalBalance.toLocaleString()}`);
     }
 
     // Retrieve existing history entries for this room
     const historyEntries = await storage.getBetHistory(req.params.id);
 
     // Banker P&L for this round
+    const winnerOpt = options.find((o) => o.key === winnerOptionKey);
+    const bankerOpt = options.find((o) => o.key === bankerOptionKey);
+
     let bankerPLLine = "";
     if (hasbanker) {
-      const bankerPumpAmount = round.bankerMaxBet ? Math.floor((round.bankerMaxBet as number) * pumpRate / 100) : 0;
+      // Pump only deducted from new portion (not carryOver)
       const bankerNet = bankerReturn - (round.bankerMaxBet as number);
-      const bankerNetCarry = round.carryOver ?? 0;
-      // Effective cost = pump on new amount; net from round = bankerReturn - bankerMaxBet (negative = loss)
-      bankerPLLine = `本餐厨师（${bankerNameDisplay}）费用: 抽水 ${bankerPumpAmount.toLocaleString()} | 本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
+      bankerPLLine = `本餐厨师（${bankerNameDisplay}）抽水: ${pumpDeducted.toLocaleString()} | 本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
     }
 
     // Build new summary message
+    // Banker score display
+    const bankerScoreStr = (optionPoints && bankerOptionKey && optionPoints[bankerOptionKey] != null)
+      ? `${bankerOptionDisplay}${optionPoints[bankerOptionKey]}点`
+      : bankerOptionDisplay;
+
     const divider = "——————————————";
     const lines = [
       divider,
       timeStr,
       `点餐结果: ${pointsDisplay}`,
-      bankerNameDisplay ? `厨师: ${bankerNameDisplay}` : "",
-      bankerReturn != null && hasbanker ? `当局余: ${bankerReturn.toLocaleString()}` : "",
-      bankerOptionDisplay ? `主厨属性: ${bankerOptionDisplay}` : "",
+      bankerNameDisplay ? `厨师: ${bankerNameDisplay}（${bankerScoreStr}）` : "",
+      hasbanker ? `厨师余: ${bankerReturn.toLocaleString()}` : "",
     ].filter(Boolean);
 
     if (playerLines.length > 0) {
@@ -838,12 +860,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const summaryContent = lines.join("\n");
 
     // This round's entry for history
-    const historyEntry = `${timeStr} 结果:${winnerOpt?.label || winnerOptionKey}${optionPoints ? `(${optionPoints[winnerOptionKey] ?? "?"}分)` : ""} 出餐:${roundBetsChron.length}人`;
+    const bankerScoreTag = optionPoints && bankerOptionKey ? `${bankerOptionDisplay}${optionPoints[bankerOptionKey] ?? "?"}` : bankerOptionDisplay;
+    const historyEntry = `${timeStr} 厨师:${bankerScoreTag} 点餐:${roundBetsChron.length}人 厨余:${bankerReturn.toLocaleString()}`;
     await storage.appendBetHistory(req.params.id, historyEntry);
 
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `本轮厨房已完成出餐。\n今日人气口味：${winnerOpt?.label || winnerOptionKey}${optionPoints ? `（${optionPoints[winnerOptionKey] ?? "?"}点）` : ""}`,
+      content: `本轮厨房已完成出餐。\n${pointsDisplay}${bankerOptionDisplay ? ` | 主厨属性: ${bankerScoreStr}` : ""}`,
       type: "system",
     });
 

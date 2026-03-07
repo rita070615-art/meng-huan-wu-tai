@@ -112,13 +112,28 @@ When starting a round, admin MUST configure a banker (主厨):
 - 续庄携带 (carryOver): if same banker continues, fill in their last round's remaining balance — only the NEW portion is deducted
 
 Rules:
-- Non-banker users cannot bet on the banker's option
+- **bankerOption is now REQUIRED** to start a round (along with bankerUserId and bankerMaxBet)
+- Non-banker users cannot bet on the banker's option (disabled with "桩" badge)
 - Total bets are capped at bankerMaxBet (enforced server-side)
 - Only the (bankerMaxBet - carryOver) portion is deducted from banker's balance
-- Pump rate only applies to the new deposited portion, not the carryOver
+- Pump rate (厨房服务费) only applies to the new deposited portion, not the carryOver
 - DONG798 and @DONG798 accounts are super-admin protected (cannot be banned/muted/demoted)
 
 Banker data stored in betRounds: `bankerUserId`, `bankerNickname`, `bankerOption`, `bankerMaxBet`, `carryOver`
+
+## Payout Rules (Banker vs Player Scoring)
+
+Each option gets a score (0-9) at round close. Each player's option score is compared against the banker's option score:
+
+- **Player wins**: player_score > banker_score (strict greater-than; tie = banker wins)
+  - If player_score == 9: payout = 3× bet (net 2× bet) — "九点三倍"
+  - Otherwise: payout = 2× bet (net 1× bet, i.e., 1-to-1 odds)
+- **Player loses**: player_score <= banker_score → stake is lost
+- **playerPumpRate** (平台服务费) is deducted from the NET WIN only
+- **Banker return**: remaining fund (effectiveBankerFund - total net wins paid) + all losing bets
+- **doubleMultiplier**: if admin toggles 庄翻倍, payout ratios are doubled (9-point becomes 6×, normal win becomes 4×)
+
+effectiveBankerFund = floor(newAmount × (1 - pumpRate/100)) + carryOver
 
 ## Cancel Round
 
@@ -143,18 +158,19 @@ After closing a round, the system posts a structured summary:
 ——————————————
 {timestamp}
 点餐结果: 体X 法X 力X 耐X
-厨师: {banker name}
-当局余: {banker remaining fund}
-主厨属性: {option label}
+厨师: {banker name}（{banker option}X点）
+厨师余: {banker return amount}
 ————
-{player}: ±{net} 余: {balance}
+{player} [{option}X(胜/负) ...]: ±{net} 余: {balance}
 ...
 ————
 历史出餐记录:
 {recent 10 history entries}
 ————
-本餐厨师（name）费用: 抽水 X | 本轮净 ±X
+本餐厨师（name）抽水: X | 本轮净 ±X
 ```
+
+History entry format: `{timestamp} 厨师:{bankerOption}{score} 点餐:{count}人 厨余:{bankerReturn}`
 
 ## Option Display Order
 

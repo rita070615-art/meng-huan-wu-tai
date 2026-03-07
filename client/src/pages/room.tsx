@@ -482,7 +482,7 @@ export default function RoomPage() {
                   </select>
                 </div>
                 <div className="min-w-0">
-                  <label className="text-xs text-muted-foreground">主厨属性</label>
+                  <label className="text-xs text-muted-foreground">主厨属性 <span className="text-red-500">*</span></label>
                   <select
                     data-testid="select-banker-option"
                     value={bankerOption}
@@ -579,11 +579,11 @@ export default function RoomPage() {
                 size="sm"
                 className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                 data-testid="button-admin-start-round"
-                disabled={startRoundMutation.isPending || !bankerUserId || !bankerMaxBet}
-                title={!bankerUserId || !bankerMaxBet ? "必须选择主厨并设置上限" : ""}
+                disabled={startRoundMutation.isPending || !bankerUserId || !bankerOption || !bankerMaxBet}
+                title={!bankerUserId || !bankerOption || !bankerMaxBet ? "必须选择主厨、主厨属性并设置上限" : ""}
                 onClick={() => {
-                  if (!bankerUserId || !bankerMaxBet) {
-                    toast({ title: "请先选择主厨并设置上限", variant: "destructive" });
+                  if (!bankerUserId || !bankerOption || !bankerMaxBet) {
+                    toast({ title: "请先选择主厨、主厨属性并设置上限", variant: "destructive" });
                     return;
                   }
                   const bu = onlineUsers?.find(x => x.id === bankerUserId) || adminUsers?.find(x => x.id === bankerUserId);
@@ -608,7 +608,7 @@ export default function RoomPage() {
                   startRoundMutation.mutate({
                     bankerUserId: bankerUserId || undefined,
                     bankerNickname: bu ? (bu.nickname || bu.username) : undefined,
-                    bankerOption: (bankerUserId && bankerOption) ? bankerOption : undefined,
+                    bankerOption: bankerOption || undefined,
                     bankerMaxBet: (bankerUserId && bankerMaxBet) ? Number(bankerMaxBet) : undefined,
                     carryOver: carryOverNum,
                     pumpRate: pumpRate ? Number(pumpRate) : undefined,
@@ -630,7 +630,7 @@ export default function RoomPage() {
           {/* During round: points entry for winner calculation */}
           {isAdmin && currentRound && adminPanelOpen && (
             <div className="px-3 pb-3 border-t border-border/50 pt-2 space-y-2">
-              <span className="text-xs text-muted-foreground">填写各属性开奖点数（最高点获胜）：</span>
+              <span className="text-xs text-muted-foreground">填写各属性点数（超过主厨属性点数胜；9点三倍，其余一赔一；同点庄赢）：</span>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                 {(currentRound.options as BetOption[]).map((opt) => {
                   const pts = optionPoints[opt.key] ?? "";
@@ -638,11 +638,11 @@ export default function RoomPage() {
                     const v = optionPoints[o.key];
                     return v !== undefined && v !== "" && !isNaN(Number(v));
                   });
-                  const scores = allFilled
-                    ? (currentRound.options as BetOption[]).map(o => Number(optionPoints[o.key]))
-                    : [];
-                  const maxScore = scores.length ? Math.max(...scores) : null;
-                  const isWinner = allFilled && maxScore !== null && Number(pts) === maxScore;
+                  // Win condition: this option's score > banker's option score (strict greater)
+                  const bankerKey = (currentRound as any).bankerOption || "";
+                  const bankerPts = allFilled && bankerKey ? Number(optionPoints[bankerKey] ?? 0) : null;
+                  const isBankerOption = opt.key === bankerKey;
+                  const isWinner = allFilled && bankerPts !== null && !isBankerOption && Number(pts) > bankerPts;
                   return (
                     <div key={opt.key} className="flex items-center gap-1.5">
                       <span
@@ -660,7 +660,8 @@ export default function RoomPage() {
                         placeholder="点"
                         className={`w-16 h-6 text-xs px-1.5 rounded border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary ${isWinner ? "border-green-500 ring-1 ring-green-500" : "border-border"}`}
                       />
-                      {isWinner && <span className="text-[10px] text-green-500 font-bold">👑</span>}
+                      {isBankerOption && <span className="text-[10px] text-amber-500 font-bold">庄</span>}
+                      {isWinner && <span className="text-[10px] text-green-500 font-bold">胜</span>}
                     </div>
                   );
                 })}
