@@ -27,6 +27,8 @@ export const botSettings = pgTable("bot_settings", {
   enabled: boolean("enabled").notNull().default(false),
   minAmount: integer("min_amount").notNull().default(100),
   maxAmount: integer("max_amount").notNull().default(500),
+  webhookUrl1: text("webhook_url1").default(""),
+  webhookUrl2: text("webhook_url2").default(""),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 

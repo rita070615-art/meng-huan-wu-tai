@@ -12,6 +12,20 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 
+async function fireWebhooks(urls: (string | null | undefined)[], payload: object): Promise<void> {
+  for (const url of urls) {
+    if (!url || !url.startsWith("http")) continue;
+    try {
+      await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch (_) {}
+  }
+}
+
 declare module "express-session" {
   interface SessionData {
     userId: string;
@@ -591,6 +605,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.updateUserBalance(bankerUserId, banker.balance - newAmount);
     }
 
+    // Fire webhook: 上庄抽水
+    const pumpDeductedStart = Math.floor(newAmount * pumpRate / 100);
+    if (pumpDeductedStart > 0 || exitPumpRate > 0) {
+      const wsCfg = await storage.getBotSettings();
+      const whUrls = [(wsCfg as any).webhookUrl1, (wsCfg as any).webhookUrl2];
+      fireWebhooks(whUrls, {
+        type: "上庄抽水",
+        timestamp: new Date().toISOString(),
+        player: bankerNickname || banker.nickname || banker.username,
+        bankerOption: bankerOption,
+        bankerMaxBet: Number(bankerMaxBet),
+        carryOver,
+        pumpRate,
+        pumpAmount: pumpDeductedStart,
+        exitPumpRate,
+      }).catch(() => {});
+    }
+
     // Build start-round system message with banker info
     const optLabelMap: Record<string, string> = { A: "力量", B: "体力", C: "法力", D: "耐力" };
     const bankerNickStr = bankerNickname || banker.nickname || banker.username;
@@ -878,6 +910,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         bankerReturn = Math.max(0, grossBankerReturn - exitPumpDeducted);
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
+        }
+        // Fire webhook: 下庄抽水
+        if (exitPumpDeducted > 0) {
+          storage.getBotSettings().then(cfg => {
+            fireWebhooks([(cfg as any).webhookUrl1, (cfg as any).webhookUrl2], {
+              type: "下庄抽水",
+              timestamp: new Date().toISOString(),
+              player: bankerNameDisplay,
+              grossProfit: Math.max(0, grossBankerReturn - (round.bankerMaxBet as number)),
+              exitPumpRate,
+              exitPumpAmount: exitPumpDeducted,
+              netBankerReturn: bankerReturn,
+            });
+          }).catch(() => {});
         }
       }
     }
@@ -1216,8 +1262,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Invalid balance" });
 
+    const before = await storage.getUser(req.params.id);
     const user = await storage.adminAdjustBalance(req.params.id, parsed.data.balance);
     if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Fire webhook: 充值 or 提现
+    const delta = parsed.data.balance - (before?.balance ?? 0);
+    if (delta !== 0) {
+      const adminName = req.session.nickname || req.session.username || "管理员";
+      const playerName = user.nickname || user.username;
+      storage.getBotSettings().then(cfg => {
+        fireWebhooks([(cfg as any).webhookUrl1, (cfg as any).webhookUrl2], {
+          type: delta > 0 ? "充值" : "提现",
+          timestamp: new Date().toISOString(),
+          admin: adminName,
+          player: playerName,
+          amount: Math.abs(delta),
+          balanceBefore: before?.balance ?? 0,
+          balanceAfter: parsed.data.balance,
+        });
+      }).catch(() => {});
+    }
+
     res.json({ id: user.id, username: user.username, balance: user.balance });
   });
 
@@ -1354,6 +1420,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       enabled: z.boolean(),
       minAmount: z.number().int().min(1),
       maxAmount: z.number().int().min(1),
+      webhookUrl1: z.string().max(500).optional(),
+      webhookUrl2: z.string().max(500).optional(),
     }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
