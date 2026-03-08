@@ -708,9 +708,9 @@ function BetRoundManager({ roomId }: { roomId: string }) {
 function UsersAdmin() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
-  const [editingBalance, setEditingBalance] = useState<string | null>(null);
+  const [editingBalance, setEditingBalance] = useState<{ id: string; mode: "add" | "sub" } | null>(null);
   const [editBalance, setEditBalance] = useState("");
-  const [pendingBalance, setPendingBalance] = useState<{ id: string; amount: number } | null>(null);
+  const [pendingBalance, setPendingBalance] = useState<{ id: string; mode: "add" | "sub"; delta: number; currentBalance: number } | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editingNickname, setEditingNickname] = useState<string | null>(null);
@@ -980,22 +980,25 @@ function UsersAdmin() {
                   </p>
                 </div>
 
-                {editingBalance === u.id ? (
+                {editingBalance?.id === u.id ? (
                   pendingBalance?.id === u.id ? (
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs text-yellow-400 font-medium whitespace-nowrap">
-                        确认修改为 {pendingBalance.amount.toLocaleString()} 分？
+                      <span className={`text-xs font-medium whitespace-nowrap ${pendingBalance.mode === "add" ? "text-green-400" : "text-red-400"}`}>
+                        确认{pendingBalance.mode === "add" ? "上分" : "下分"} {pendingBalance.delta.toLocaleString()} 分？
                       </span>
                       <Button
                         size="sm"
                         variant="default"
                         data-testid={`button-confirm-balance-${u.id}`}
                         onClick={() => {
-                          updateBalanceMutation.mutate({ id: u.id, balance: pendingBalance.amount });
+                          const newBal = pendingBalance.mode === "add"
+                            ? pendingBalance.currentBalance + pendingBalance.delta
+                            : Math.max(0, pendingBalance.currentBalance - pendingBalance.delta);
+                          updateBalanceMutation.mutate({ id: u.id, balance: newBal });
                           setPendingBalance(null);
                         }}
                         disabled={updateBalanceMutation.isPending}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-black"
+                        className={pendingBalance.mode === "add" ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
                       >
                         <Check className="w-3.5 h-3.5" />
                         确认
@@ -1006,25 +1009,36 @@ function UsersAdmin() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${editingBalance.mode === "add" ? "bg-green-600/20 text-green-400" : "bg-red-600/20 text-red-400"}`}>
+                        {editingBalance.mode === "add" ? "上分" : "下分"}
+                      </span>
                       <Input
                         data-testid={`input-balance-${u.id}`}
                         type="number"
-                        min={0}
+                        min={1}
+                        placeholder="输入金额"
                         value={editBalance}
                         onChange={(e) => setEditBalance(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") setPendingBalance({ id: u.id, amount: parseInt(editBalance) });
+                          if (e.key === "Enter") {
+                            const delta = parseInt(editBalance);
+                            if (!isNaN(delta) && delta > 0) setPendingBalance({ id: u.id, mode: editingBalance.mode, delta, currentBalance: u.balance });
+                          }
                           if (e.key === "Escape") setEditingBalance(null);
                         }}
-                        className="w-28 h-8 text-sm"
+                        className="w-24 h-8 text-sm"
                         autoFocus
                       />
                       <Button
                         size="sm"
                         variant="default"
                         data-testid={`button-save-balance-${u.id}`}
-                        onClick={() => setPendingBalance({ id: u.id, amount: parseInt(editBalance) })}
-                        disabled={!editBalance || isNaN(parseInt(editBalance))}
+                        onClick={() => {
+                          const delta = parseInt(editBalance);
+                          if (!isNaN(delta) && delta > 0) setPendingBalance({ id: u.id, mode: editingBalance.mode, delta, currentBalance: u.balance });
+                        }}
+                        disabled={!editBalance || isNaN(parseInt(editBalance)) || parseInt(editBalance) <= 0}
+                        className={editingBalance.mode === "add" ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}
                       >
                         <Check className="w-3.5 h-3.5" />
                       </Button>
@@ -1046,11 +1060,20 @@ function UsersAdmin() {
                       <Button
                         size="sm"
                         variant="outline"
-                        data-testid={`button-edit-balance-${u.id}`}
-                        onClick={() => { setEditingBalance(u.id); setEditBalance(String(u.balance)); }}
-                        className="h-6 px-2 text-xs"
+                        data-testid={`button-add-balance-${u.id}`}
+                        onClick={() => { setEditingBalance({ id: u.id, mode: "add" }); setEditBalance(""); }}
+                        className="h-6 px-2 text-xs border-green-600 text-green-500 hover:bg-green-600/10"
                       >
-                        余额
+                        上分
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid={`button-sub-balance-${u.id}`}
+                        onClick={() => { setEditingBalance({ id: u.id, mode: "sub" }); setEditBalance(""); }}
+                        className="h-6 px-2 text-xs border-red-600 text-red-500 hover:bg-red-600/10"
+                      >
+                        下分
                       </Button>
                       {u.role !== "admin" && (
                         <Button
@@ -1276,7 +1299,7 @@ function BotAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
-  const [editingBalanceId, setEditingBalanceId] = useState<string | null>(null);
+  const [editingBalanceId, setEditingBalanceId] = useState<{ id: string; mode: "add" | "sub" } | null>(null);
   const [editingBalanceValue, setEditingBalanceValue] = useState("");
 
   const balanceMutation = useMutation({
@@ -1290,13 +1313,15 @@ function BotAdmin() {
     onError: (e: Error) => toast({ title: "更新失败", description: e.message, variant: "destructive" }),
   });
 
-  const commitBalanceEdit = (id: string) => {
-    const val = parseInt(editingBalanceValue, 10);
-    if (isNaN(val) || val < 0) {
-      toast({ title: "请输入有效积分数（≥0）", variant: "destructive" });
+  const commitBalanceEdit = (id: string, currentBalance: number) => {
+    const delta = parseInt(editingBalanceValue, 10);
+    if (isNaN(delta) || delta <= 0) {
+      toast({ title: "请输入有效金额（>0）", variant: "destructive" });
       return;
     }
-    balanceMutation.mutate({ id, balance: val });
+    const mode = editingBalanceId?.mode ?? "add";
+    const newBal = mode === "add" ? currentBalance + delta : Math.max(0, currentBalance - delta);
+    balanceMutation.mutate({ id, balance: newBal });
   };
 
   const handleToggleEnabled = () => {
@@ -1442,24 +1467,35 @@ function BotAdmin() {
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
+                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                     <Coins className="w-3 h-3 text-yellow-500 shrink-0" />
-                    {editingBalanceId === u.id ? (
+                    <span data-testid={`text-shill-balance-${u.id}`} className="text-xs text-muted-foreground">
+                      {u.balance.toLocaleString()} 积分
+                    </span>
+                    {editingBalanceId?.id === u.id ? (
                       <form
                         className="flex items-center gap-1"
-                        onSubmit={(e) => { e.preventDefault(); commitBalanceEdit(u.id); }}
+                        onSubmit={(e) => { e.preventDefault(); commitBalanceEdit(u.id, u.balance); }}
                       >
+                        <span className={`text-xs font-semibold px-1 py-0.5 rounded ${editingBalanceId.mode === "add" ? "bg-green-600/20 text-green-400" : "bg-red-600/20 text-red-400"}`}>
+                          {editingBalanceId.mode === "add" ? "上分" : "下分"}
+                        </span>
                         <Input
                           data-testid={`input-shill-balance-${u.id}`}
                           type="number"
-                          min={0}
+                          min={1}
+                          placeholder="金额"
                           value={editingBalanceValue}
                           onChange={(e) => setEditingBalanceValue(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Escape") setEditingBalanceId(null); }}
                           autoFocus
-                          className="h-6 text-xs w-28 px-2"
+                          className="h-6 text-xs w-20 px-2"
                         />
-                        <button type="submit" className="text-green-500 hover:text-green-400" data-testid={`button-save-shill-balance-${u.id}`}>
+                        <button
+                          type="submit"
+                          className={editingBalanceId.mode === "add" ? "text-green-500 hover:text-green-400" : "text-red-500 hover:text-red-400"}
+                          data-testid={`button-save-shill-balance-${u.id}`}
+                        >
                           <Check className="w-3.5 h-3.5" />
                         </button>
                         <button type="button" onClick={() => setEditingBalanceId(null)} className="text-muted-foreground hover:text-foreground">
@@ -1467,15 +1503,22 @@ function BotAdmin() {
                         </button>
                       </form>
                     ) : (
-                      <button
-                        data-testid={`text-shill-balance-${u.id}`}
-                        className="text-xs text-muted-foreground hover:text-yellow-400 transition-colors cursor-text"
-                        title="点击编辑积分"
-                        onClick={() => { setEditingBalanceId(u.id); setEditingBalanceValue(String(u.balance)); }}
-                      >
-                        {u.balance.toLocaleString()} 积分
-                        <Edit2 className="w-2.5 h-2.5 inline ml-1 opacity-50" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          data-testid={`button-shill-add-${u.id}`}
+                          onClick={() => { setEditingBalanceId({ id: u.id, mode: "add" }); setEditingBalanceValue(""); }}
+                          className="text-xs px-1.5 py-0.5 rounded border border-green-600 text-green-500 hover:bg-green-600/10 transition-colors"
+                        >
+                          上分
+                        </button>
+                        <button
+                          data-testid={`button-shill-sub-${u.id}`}
+                          onClick={() => { setEditingBalanceId({ id: u.id, mode: "sub" }); setEditingBalanceValue(""); }}
+                          className="text-xs px-1.5 py-0.5 rounded border border-red-600 text-red-500 hover:bg-red-600/10 transition-colors"
+                        >
+                          下分
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

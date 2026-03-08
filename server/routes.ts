@@ -1342,9 +1342,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.adminAdjustBalance(req.params.id, parsed.data.balance);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Fire webhook: 充值 or 提现
+    // Fire webhook: 充值 or 提现 (skip for shill/bot accounts)
     const delta = parsed.data.balance - (before?.balance ?? 0);
-    if (delta !== 0) {
+    if (delta !== 0 && !before?.isShill) {
       const adminName = req.session.nickname || req.session.username || "管理员";
       const playerName = user.nickname || user.username;
       storage.getBotSettings().then(cfg => {
