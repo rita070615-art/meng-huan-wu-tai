@@ -15,29 +15,39 @@ import express from "express";
 function formatWebhookContent(payload: Record<string, unknown>): string {
   const type = payload.type as string;
   const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  const fmt = (n: number) => n.toLocaleString("en-US");
   if (type === "上庄抽水") {
-    const newAmt = (payload.bankerMaxBet as number) - (payload.carryOver as number);
-    const afterPumpNew = newAmt - (payload.pumpAmount as number);
-    const totalEffective = afterPumpNew + (payload.carryOver as number);
-    const lines = [
-      `🎰 **上庄抽水** \`${ts}\``,
-      `庄家：${payload.player}（${payload.bankerOption}）`,
-      `本局标庄：${payload.bankerMaxBet}`,
-      `上庄抽水率：${payload.pumpRate}%　抽水后：${afterPumpNew}`,
-    ];
-    if ((payload.carryOver as number) > 0) {
-      lines.push(`续庄抽水后：${payload.carryOver}`);
-    }
-    lines.push(`下庄抽水率：${payload.exitPumpRate}%`);
-    lines.push(`**RMB ${totalEffective}**`);
-    return lines.join("\n");
+    const newPortion = (payload.bankerMaxBet as number) - (payload.carryOver as number);
+    const pumpAmt = payload.pumpAmount as number;
+    return [
+      `🎰 **上庄抽水**`,
+      `时间：${ts}`,
+      `庄家：${payload.player}`,
+      `本局标庄：${fmt(newPortion)}`,
+      `上庄抽水率：${payload.pumpRate}%`,
+      `平台盈利：**RMB ${fmt(pumpAmt)}**`,
+    ].join("\n");
+  }
+  if (type === "续庄抽水") {
+    const carryOver = payload.carryOver as number;
+    const pumpRate = payload.pumpRate as number;
+    const carryPump = Math.floor(carryOver * pumpRate / 100);
+    return [
+      `🎰 **续庄抽水**`,
+      `时间：${ts}`,
+      `庄家：${payload.player}`,
+      `续庄金额：${fmt(carryOver)}`,
+      `上庄抽水率：${pumpRate}%`,
+      `平台盈利：**RMB ${fmt(carryPump)}**`,
+    ].join("\n");
   }
   if (type === "下庄抽水") {
     return [
-      `💸 **下庄抽水** \`${ts}\``,
+      `💸 **下庄抽水**`,
+      `时间：${ts}`,
       `庄家：${payload.player}`,
-      `下庄抽水率：${payload.exitPumpRate}%　抽水：${payload.exitPumpAmount}`,
-      `本局庄家输赢：${payload.netBankerReturn}`,
+      `下庄抽水率：${payload.exitPumpRate}%　抽水：${fmt(payload.exitPumpAmount as number)}`,
+      `本局庄家输赢：${fmt(payload.netBankerReturn as number)}`,
     ].join("\n");
   }
   if (type === "充值") {
@@ -659,10 +669,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (pumpDeductedStart > 0 || exitPumpRate > 0) {
       const wsCfg = await storage.getBotSettings();
       const whUrls = [(wsCfg as any).webhookUrl1];
+      const playerName = bankerNickname || banker.nickname || banker.username;
       fireWebhooks(whUrls, {
         type: "上庄抽水",
-        timestamp: new Date().toISOString(),
-        player: bankerNickname || banker.nickname || banker.username,
+        player: playerName,
         bankerOption: bankerOption,
         bankerMaxBet: Number(bankerMaxBet),
         carryOver,
@@ -670,6 +680,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pumpAmount: pumpDeductedStart,
         exitPumpRate,
       }).catch(() => {});
+      if (carryOver > 0) {
+        fireWebhooks(whUrls, {
+          type: "续庄抽水",
+          player: playerName,
+          carryOver,
+          pumpRate,
+        }).catch(() => {});
+      }
     }
 
     // Build start-round system message with banker info
