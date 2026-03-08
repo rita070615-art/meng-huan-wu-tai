@@ -239,7 +239,7 @@ function RoomsAdmin() {
                 data-testid="input-room-name"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="例如：百家乐大厅"
+                placeholder="例如：神启"
                 className="bg-background"
               />
             </div>
