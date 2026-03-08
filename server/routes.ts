@@ -1765,6 +1765,50 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  app.get("/api/admin/finance-report", requireAdmin, async (req, res) => {
+    if (!["DONG798", "@DONG798"].includes(req.session.username ?? "")) {
+      return res.status(403).json({ error: "无权限" });
+    }
+    const [users, rounds] = await Promise.all([
+      storage.getAllUsers(),
+      storage.getAllBetRoundsWithBets(),
+    ]);
+
+    const deposits = users
+      .filter(u => ((u as any).totalDeposits ?? 0) > 0)
+      .map(u => ({ username: u.username, nickname: u.nickname ?? null, amount: (u as any).totalDeposits as number }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const withdrawals = users
+      .filter(u => ((u as any).totalWithdrawals ?? 0) > 0)
+      .map(u => ({ username: u.username, nickname: u.nickname ?? null, amount: (u as any).totalWithdrawals as number }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const roundPumps = rounds
+      .filter(r => r.status === "closed" && r.bankerUserId)
+      .map(r => {
+        const pumpRate = (r as any).pumpRate ?? 0;
+        const exitPumpRate = (r as any).exitPumpRate ?? 0;
+        const bankerMaxBet = (r as any).bankerMaxBet ?? 0;
+        const carryOver = (r as any).carryOver ?? 0;
+        const newPortion = Math.max(0, bankerMaxBet - carryOver);
+        const pumpAmount = Math.floor(newPortion * pumpRate / 100);
+        return {
+          id: r.id,
+          roomName: r.roomName,
+          bankerNickname: r.bankerNickname ?? r.bankerUserId ?? "—",
+          date: (r.closedAt ?? r.createdAt)?.toISOString() ?? "",
+          pumpRate,
+          exitPumpRate,
+          pumpAmount,
+          betsCount: r.bets.length,
+        };
+      })
+      .sort((a, b) => (b.date > a.date ? 1 : -1));
+
+    res.json({ deposits, withdrawals, roundPumps });
+  });
+
   app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
     const msgs = await storage.getPrivateMessagesForAdmin(req.params.userId);
     await storage.markReadByAdmin(req.params.userId);

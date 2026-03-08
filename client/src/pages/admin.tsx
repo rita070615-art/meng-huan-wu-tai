@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw, FileText, Download
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -82,7 +82,7 @@ export default function AdminPage() {
           </TabsContent>
           {isDong798 && (
             <TabsContent value="finance">
-              <PlatformStats />
+              <FinanceTabs />
             </TabsContent>
           )}
         </Tabs>
@@ -1727,6 +1727,220 @@ function AdminInbox() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function FinanceTabs() {
+  const [sub, setSub] = useState<"overview" | "report">("overview");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-muted/40 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => setSub("overview")}
+          className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${sub === "overview" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          概览
+        </button>
+        <button
+          onClick={() => setSub("report")}
+          className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${sub === "report" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          导出报表
+        </button>
+      </div>
+      {sub === "overview" ? <PlatformStats /> : <FinanceReport />}
+    </div>
+  );
+}
+
+function FinanceReport() {
+  type ReportData = {
+    deposits: Array<{ username: string; nickname: string | null; amount: number }>;
+    withdrawals: Array<{ username: string; nickname: string | null; amount: number }>;
+    roundPumps: Array<{ id: string; roomName: string; bankerNickname: string; date: string; pumpRate: number; exitPumpRate: number; pumpAmount: number; betsCount: number }>;
+  };
+
+  const [tab, setTab] = useState<"deposits" | "withdrawals" | "pumps">("deposits");
+
+  const { data, isLoading, refetch, isFetching } = useQuery<ReportData>({
+    queryKey: ["/api/admin/finance-report"],
+    refetchInterval: false,
+  });
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const downloadCsv = (rows: string[][], filename: string) => {
+    const bom = "\uFEFF";
+    const content = bom + rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportDeposits = () => {
+    if (!data) return;
+    const rows = [["用户名", "昵称", "充值总额"], ...data.deposits.map(d => [d.username, d.nickname ?? "", String(d.amount)])];
+    downloadCsv(rows, "充值明细.csv");
+  };
+
+  const exportWithdrawals = () => {
+    if (!data) return;
+    const rows = [["用户名", "昵称", "提现总额"], ...data.withdrawals.map(d => [d.username, d.nickname ?? "", String(d.amount)])];
+    downloadCsv(rows, "提现明细.csv");
+  };
+
+  const exportPumps = () => {
+    if (!data) return;
+    const rows = [["时间", "房间", "庄家", "上庄抽水率", "下庄抽水率", "本局抽水", "下注笔数"],
+      ...data.roundPumps.map(p => [
+        new Date(p.date).toLocaleString("zh-CN"),
+        p.roomName, p.bankerNickname,
+        p.pumpRate + "%", p.exitPumpRate + "%",
+        String(p.pumpAmount), String(p.betsCount),
+      ])];
+    downloadCsv(rows, "每局抽水.csv");
+  };
+
+  const tabs: { key: "deposits" | "withdrawals" | "pumps"; label: string; color: string }[] = [
+    { key: "deposits",    label: "充值",     color: "text-green-500" },
+    { key: "withdrawals", label: "提现",     color: "text-red-400" },
+    { key: "pumps",       label: "每局抽水", color: "text-amber-400" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h2 className="font-semibold text-base flex items-center gap-2">
+          <FileText className="w-4 h-4 text-primary" />
+          财务报表
+        </h2>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5">
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          刷新
+        </Button>
+      </div>
+
+      <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+        {tabs.map((t, i) => (
+          <button
+            key={t.key}
+            data-testid={`report-tab-${t.key}`}
+            onClick={() => setTab(t.key)}
+            className={`px-5 py-2 text-sm font-medium transition-colors border-r last:border-r-0 border-border
+              ${tab === t.key ? `bg-card ${t.color}` : "text-muted-foreground hover:text-foreground bg-background"}`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-10 rounded-lg" />)}</div>
+      ) : !data ? (
+        <div className="text-center text-muted-foreground py-8 text-sm">加载失败</div>
+      ) : (
+        <div className="bg-card border border-card-border rounded-xl overflow-hidden">
+          {tab === "deposits" && (
+            <>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-medium text-green-500">充值明细 · {data.deposits.length} 人</span>
+                <Button size="sm" variant="outline" onClick={exportDeposits} className="gap-1.5 text-xs h-7">
+                  <Download className="w-3 h-3" />导出 CSV
+                </Button>
+              </div>
+              <div className="divide-y divide-border/50 max-h-[480px] overflow-y-auto">
+                {data.deposits.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">暂无充值记录</div>
+                ) : data.deposits.map((d, i) => (
+                  <div key={d.username} className="flex items-center px-4 py-2.5 gap-3">
+                    <span className="text-xs text-muted-foreground w-6 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium">{d.nickname || d.username}</span>
+                      {d.nickname && <span className="text-xs text-muted-foreground ml-1.5">@{d.username}</span>}
+                    </div>
+                    <span className="text-sm font-bold text-green-500 tabular-nums">+{fmt(d.amount)}</span>
+                  </div>
+                ))}
+              </div>
+              {data.deposits.length > 0 && (
+                <div className="px-4 py-2.5 border-t border-border bg-muted/20 flex justify-between text-xs text-muted-foreground">
+                  <span>合计</span>
+                  <span className="font-bold text-green-500">+{fmt(data.deposits.reduce((s, d) => s + d.amount, 0))}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "withdrawals" && (
+            <>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-medium text-red-400">提现明细 · {data.withdrawals.length} 人</span>
+                <Button size="sm" variant="outline" onClick={exportWithdrawals} className="gap-1.5 text-xs h-7">
+                  <Download className="w-3 h-3" />导出 CSV
+                </Button>
+              </div>
+              <div className="divide-y divide-border/50 max-h-[480px] overflow-y-auto">
+                {data.withdrawals.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">暂无提现记录</div>
+                ) : data.withdrawals.map((d, i) => (
+                  <div key={d.username} className="flex items-center px-4 py-2.5 gap-3">
+                    <span className="text-xs text-muted-foreground w-6 shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium">{d.nickname || d.username}</span>
+                      {d.nickname && <span className="text-xs text-muted-foreground ml-1.5">@{d.username}</span>}
+                    </div>
+                    <span className="text-sm font-bold text-red-400 tabular-nums">-{fmt(d.amount)}</span>
+                  </div>
+                ))}
+              </div>
+              {data.withdrawals.length > 0 && (
+                <div className="px-4 py-2.5 border-t border-border bg-muted/20 flex justify-between text-xs text-muted-foreground">
+                  <span>合计</span>
+                  <span className="font-bold text-red-400">-{fmt(data.withdrawals.reduce((s, d) => s + d.amount, 0))}</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "pumps" && (
+            <>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-medium text-amber-400">每局抽水 · {data.roundPumps.length} 局</span>
+                <Button size="sm" variant="outline" onClick={exportPumps} className="gap-1.5 text-xs h-7">
+                  <Download className="w-3 h-3" />导出 CSV
+                </Button>
+              </div>
+              <div className="divide-y divide-border/50 max-h-[480px] overflow-y-auto">
+                {data.roundPumps.length === 0 ? (
+                  <div className="p-6 text-center text-muted-foreground text-sm">暂无抽水记录</div>
+                ) : data.roundPumps.map((p) => (
+                  <div key={p.id} className="flex items-center px-4 py-2.5 gap-3">
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{p.bankerNickname}</span>
+                        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{p.roomName}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(p.date).toLocaleString("zh-CN")} · 上庄率 {p.pumpRate}% · 下庄率 {p.exitPumpRate}% · {p.betsCount} 笔
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-amber-400 tabular-nums shrink-0">+{fmt(p.pumpAmount)}</span>
+                  </div>
+                ))}
+              </div>
+              {data.roundPumps.length > 0 && (
+                <div className="px-4 py-2.5 border-t border-border bg-muted/20 flex justify-between text-xs text-muted-foreground">
+                  <span>合计</span>
+                  <span className="font-bold text-amber-400">+{fmt(data.roundPumps.reduce((s, p) => s + p.pumpAmount, 0))}</span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
