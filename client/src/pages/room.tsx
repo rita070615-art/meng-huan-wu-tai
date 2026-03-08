@@ -1409,10 +1409,32 @@ function ChatMessage({
 
   if (isSystem) {
     const lines = msg.content.split("\n");
-    const isMultiLine = lines.length > 1;
+    const isReport = lines.length >= 5;
+    if (isReport) {
+      // Report-style: no bubble, plain text directly in chat
+      return (
+        <div className="w-full px-3 py-2 my-1">
+          <div className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap font-mono">
+            {lines.map((line, i) => (
+              <span key={i} className="block">
+                {line || "\u00A0"}
+              </span>
+            ))}
+          </div>
+          {isAdmin && onDelete && (
+            <button
+              className="mt-0.5 text-[10px] text-red-400 hover:text-red-500 transition-colors"
+              onClick={() => onDelete(msg.id)}
+            >
+              删除
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex justify-center my-1.5 px-2">
-        <div className={`bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs text-center w-full max-w-sm ${isMultiLine ? "px-4 py-2.5 rounded-xl" : "px-3 py-1 rounded-full"}`}>
+        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs text-center w-full max-w-sm px-3 py-1 rounded-full">
           {lines.map((line, i) => (
             <span key={i} className="block leading-snug">
               {line || "\u00A0"}

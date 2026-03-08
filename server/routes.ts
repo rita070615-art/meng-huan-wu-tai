@@ -917,15 +917,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const pad = (n: number) => String(n).padStart(2, "0");
     const timeStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-    // Build points display: 体X 法X 力X 耐X in B,C,A,D order
+    // Build points display: 体力 8 · 法力 5 · 力量 6 · 耐力 2 in B,C,A,D order
     const displayOrder = ["B","C","A","D"];
     const pointsDisplay = optionPoints && Object.keys(optionPoints).length > 0
       ? displayOrder.map(k => {
           const o = options.find(x => x.key === k);
           if (!o) return null;
-          return `${o.label}${optionPoints[k] ?? "?"}`;
-        }).filter(Boolean).join(" ")
-      : options.map(o => o.label).join(" ");
+          return `${o.label} ${optionPoints[k] ?? "?"}`;
+        }).filter(Boolean).join(" · ")
+      : options.map(o => o.label).join(" · ");
 
     // Banker info and return
     let bankerNameDisplay = "";
@@ -980,68 +980,85 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Retrieve existing history entries for this room
     const historyEntries = await storage.getBetHistory(req.params.id);
 
-    // Banker P&L for this round
-    const winnerOpt = options.find((o) => o.key === winnerOptionKey);
-    const bankerOpt = options.find((o) => o.key === bankerOptionKey);
+    // Banker score display (bankerScore already declared above)
+    const bankerScoreStr = bankerScore != null ? `当前${bankerOptionDisplay} ${bankerScore} 点` : bankerOptionDisplay;
 
-    let bankerPLLine = "";
-    if (hasbanker) {
-      const bankerNet = bankerReturn - (round.bankerMaxBet as number);
-      bankerPLLine = `本餐厨师（${bankerNameDisplay}）本轮净 ${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`;
-    }
+    // Banker P&L
+    const bankerNet = hasbanker ? bankerReturn - (round.bankerMaxBet as number) : 0;
 
-    // Build new summary message
-    // Banker score display
-    const bankerScoreStr = (optionPoints && bankerOptionKey && optionPoints[bankerOptionKey] != null)
-      ? `${bankerOptionDisplay}${optionPoints[bankerOptionKey]}点`
-      : bankerOptionDisplay;
-
-    const divider = "——————————————";
-    const lines = [
-      divider,
-      timeStr,
-      `点餐结果: ${pointsDisplay}`,
-      bankerNameDisplay ? `厨师: ${bankerNameDisplay}（${bankerScoreStr}）` : "",
-      hasbanker ? `厨师余: ${bankerReturn.toLocaleString()}` : "",
-    ].filter(Boolean);
-
-    if (playerLines.length > 0) {
-      lines.push("————");
-      lines.push(...playerLines);
-    }
-
-    // Historical entries (last 10 for conciseness)
-    if (historyEntries.length > 0) {
-      lines.push("————");
-      lines.push("历史出餐记录:");
-      const recent = historyEntries.slice(-10);
-      lines.push(...recent);
-    }
-
-    if (bankerPLLine) {
-      lines.push("————");
-      lines.push(bankerPLLine);
-    }
-
-    const summaryContent = lines.join("\n");
-
-    // This round's entry for history
-    const bankerScoreTag = optionPoints && bankerOptionKey ? `${bankerOptionDisplay}${optionPoints[bankerOptionKey] ?? "?"}` : bankerOptionDisplay;
-    const historyEntry = `${timeStr} 厨师:${bankerScoreTag} 点餐:${roundBetsChron.length}人 厨余:${bankerReturn.toLocaleString()}`;
+    // This round's entry for history (new format)
+    const bankerScoreTag = bankerScore != null ? `${bankerOptionDisplay} ${bankerScore}` : bankerOptionDisplay;
+    const historyEntry = `${timeStr} · ${bankerScoreTag} · 点餐 ${roundBetsChron.length} 人 · 厨余 ${bankerReturn.toLocaleString()}`;
     await storage.appendBetHistory(req.params.id, historyEntry);
 
-    const msg = await storage.createMessage({
-      roomId: req.params.id,
-      content: `本轮厨房已完成出餐。\n${pointsDisplay}${bankerOptionDisplay ? ` | 主厨属性: ${bankerScoreStr}` : ""}`,
-      type: "system",
-    });
+    // Build balance board section (inline in the big summary message)
+    const balanceSectionLines: string[] = [];
+    try {
+      const roomIdSnap = req.params.id;
+      const nowTs = Date.now();
+      const connectedIds = new Set<string>();
+      wsClients.forEach((c) => {
+        if (c.roomId === roomIdSnap && c.ws.readyState === WebSocket.OPEN && nowTs - c.lastActivity < 45000) {
+          connectedIds.add(c.userId);
+        }
+      });
+      const allUsers = await storage.getAllUsers();
+      const shillsHere = allUsers.filter(u => u.isShill && (!(u as any).shillRoomId || (u as any).shillRoomId === roomIdSnap));
+      shillsHere.forEach(u => connectedIds.add(u.id));
+      for (const uid of connectedIds) {
+        const u = await storage.getUser(uid);
+        if (!u) continue;
+        balanceSectionLines.push(`${u.nickname || u.username}：${u.balance.toLocaleString()}`);
+      }
+    } catch (e) {
+      console.error("Balance snapshot error:", e);
+    }
+
+    // Consolidated report message
+    const reportLines: string[] = [];
+    reportLines.push(`⏰ ${timeStr}`);
+    reportLines.push("");
+    reportLines.push("🧑‍🍳 本局出餐");
+    reportLines.push(pointsDisplay);
+    if (bankerNameDisplay) {
+      reportLines.push(`👨‍🍳 厨师：${bankerNameDisplay}（${bankerScoreStr}）`);
+      reportLines.push(`🍳 厨师剩余${bankerOptionDisplay}：${bankerReturn.toLocaleString()}`);
+    }
+    if (playerLines.length > 0) {
+      reportLines.push("");
+      reportLines.push("📉 本局餐费");
+      reportLines.push(...playerLines);
+    }
+    if (hasbanker) {
+      reportLines.push("");
+      reportLines.push(`🏆 本餐厨师（${bankerNameDisplay}）本轮净收益：${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`);
+      reportLines.push("✅ 本轮厨房已完成出餐。");
+    }
+    if (historyEntries.length > 0) {
+      reportLines.push("");
+      reportLines.push("📜 历史出餐记录");
+      historyEntries.slice(-10).forEach(h => reportLines.push(h));
+    }
+    if (balanceSectionLines.length > 0) {
+      reportLines.push("");
+      reportLines.push("🔒 当前积分榜（在场玩家）");
+      reportLines.push(...balanceSectionLines);
+    }
+    const reportContent = reportLines.join("\n");
 
     const summaryMsg = await storage.createMessage({
       roomId: req.params.id,
-      content: summaryContent,
+      content: reportContent,
       type: "system",
     });
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
+
+    // Lightweight close notification (used for BET_ROUND_CLOSED broadcast)
+    const msg = await storage.createMessage({
+      roomId: req.params.id,
+      content: `✅ 本轮厨房已完成出餐。`,
+      type: "system",
+    });
 
     const exitPumpRateBcast = (round as any).exitPumpRate ?? 0;
     // Persist banker decision state so admin can navigate away and return without losing context.
@@ -1066,41 +1083,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
     }
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate, exitPumpRate: exitPumpRateBcast });
-
-    // Post a balance board: every user currently connected to this room + shills assigned here
-    try {
-      const roomId = req.params.id;
-      const now = Date.now();
-      // Unique user IDs from active WebSocket connections in this room (active within 45s)
-      const connectedIds = new Set<string>();
-      wsClients.forEach((c) => {
-        if (c.roomId === roomId && c.ws.readyState === WebSocket.OPEN && now - c.lastActivity < 45000) {
-          connectedIds.add(c.userId);
-        }
-      });
-      // Also include shills assigned to this room (or all rooms)
-      const allUsers = await storage.getAllUsers();
-      const shillsHere = allUsers.filter(u => u.isShill && (!(u as any).shillRoomId || (u as any).shillRoomId === roomId));
-      shillsHere.forEach(u => connectedIds.add(u.id));
-
-      if (connectedIds.size > 0) {
-        // Fetch fresh balances for all these users
-        const balanceLines: string[] = [];
-        for (const uid of connectedIds) {
-          const u = await storage.getUser(uid);
-          if (!u) continue;
-          const label = u.nickname || u.username;
-          balanceLines.push(`${label}：${u.balance.toLocaleString()}`);
-        }
-        if (balanceLines.length > 0) {
-          const balanceContent = `📊 在场积分快照\n${balanceLines.join("\n")}`;
-          const balanceMsg = await storage.createMessage({ roomId, content: balanceContent, type: "system" });
-          broadcast(roomId, { type: "MESSAGE", message: balanceMsg });
-        }
-      }
-    } catch (e) {
-      console.error("Balance snapshot error:", e);
-    }
 
     res.json(closed);
   });
