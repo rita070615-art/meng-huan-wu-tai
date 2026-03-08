@@ -319,7 +319,6 @@ function RoomsAdmin() {
                   <div className="mt-1 ml-4 border-l-2 border-primary/30 pl-4 space-y-3">
                     <RoomPasswordManager room={room} />
                     <ClearMessagesButton roomId={room.id} />
-                    <BetRoundManager roomId={room.id} />
                   </div>
                 )}
               </div>
