@@ -1316,7 +1316,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ refund });
   });
 
-  // Online users in a room (based on WebSocket connections)
+  // Online users in a room (based on WebSocket connections) + assigned shills
   app.get("/api/rooms/:id/online-users", requireAdmin, async (req, res) => {
     const ACTIVE_WINDOW = 45 * 1000;
     const now = Date.now();
@@ -1327,10 +1327,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     );
     const uniqueIds = [...new Set(online.map(c => c.userId))];
     const users = await Promise.all(uniqueIds.map(id => storage.getUser(id)));
-    const result = users
+    const realUsers = users
       .filter((u): u is NonNullable<typeof u> => !!u && !u.isShill && !u.banned)
-      .map(u => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance }));
-    res.json(result);
+      .map(u => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, isShill: false }));
+
+    const allShills = await storage.getShillUsers();
+    const roomShills = allShills
+      .filter(s => (s as any).shillRoomId === req.params.id)
+      .map(s => ({ id: s.id, username: s.username, nickname: s.nickname, balance: s.balance, isShill: true }));
+
+    res.json([...realUsers, ...roomShills]);
   });
 
   // ADMIN
