@@ -1003,9 +1003,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Banker P&L
     const bankerNet = hasbanker ? bankerReturn - (round.bankerMaxBet as number) : 0;
 
-    // This round's entry for history (new format)
+    // Compact history entry: digit per option in displayOrder, e.g. "5213@体力·法力·力量·耐力"
+    const trendDisplayOrder = ["B","C","A","D"];
     const bankerScoreTag = bankerScore != null ? `${bankerOptionDisplay} ${bankerScore}` : bankerOptionDisplay;
-    const historyEntry = `${timeStr} · ${bankerScoreTag} · 点餐 ${roundBetsChron.length} 人 · 厨余 ${bankerReturn.toLocaleString()}`;
+    let historyEntry: string;
+    if (optionPoints && Object.keys(optionPoints).length > 0) {
+      const digits = trendDisplayOrder
+        .map(k => {
+          const o = options.find(x => x.key === k);
+          if (!o) return null;
+          const score = optionPoints[k];
+          return score != null ? String(score) : null;
+        })
+        .filter((d): d is string => d !== null)
+        .join("");
+      const labels = trendDisplayOrder
+        .map(k => options.find(x => x.key === k)?.label)
+        .filter(Boolean)
+        .join("·");
+      historyEntry = `${digits}@${labels}`;
+    } else {
+      historyEntry = `${timeStr} · ${bankerScoreTag} · 点餐 ${roundBetsChron.length} 人 · 厨余 ${bankerReturn.toLocaleString()}`;
+    }
     await storage.appendBetHistory(req.params.id, historyEntry);
 
     // Build balance board section (inline in the big summary message)
@@ -1053,8 +1072,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     if (historyEntries.length > 0) {
       reportLines.push("");
-      reportLines.push("📜 历史出餐记录");
-      historyEntries.slice(-10).forEach(h => reportLines.push(h));
+      // Separate new compact entries (contains "@") from legacy entries
+      const compactEntries = historyEntries.filter(h => /^\d+@/.test(h));
+      const legacyEntries = historyEntries.filter(h => !/^\d+@/.test(h));
+      if (compactEntries.length > 0) {
+        // Derive label key from the most recent compact entry
+        const lastCompact = compactEntries[compactEntries.length - 1];
+        const labelPart = lastCompact.split("@")[1] || "";
+        // Abbreviate: first char of each label
+        const abbrev = labelPart.split("·").map((l: string) => l.charAt(0)).join("");
+        const trendDigits = compactEntries.slice(-20).map(h => h.split("@")[0]).join("  ");
+        reportLines.push(`📜 历史走势（${abbrev}）`);
+        reportLines.push(trendDigits);
+      }
+      if (legacyEntries.length > 0) {
+        if (compactEntries.length === 0) reportLines.push("📜 历史出餐记录");
+        legacyEntries.slice(-5).forEach(h => reportLines.push(h));
+      }
     }
     if (balanceSectionLines.length > 0) {
       reportLines.push("");
