@@ -1409,7 +1409,7 @@ function ChatMessage({
 
   if (isSystem) {
     const lines = msg.content.split("\n");
-    const isReport = lines.length >= 5;
+    const isReport = lines.length >= 10;
 
     const OPTION_COLORS: Record<string, string> = {
       "体力": "#22c55e",
@@ -1423,13 +1423,13 @@ function ChatMessage({
     };
 
     return (
-      <div className="flex flex-col items-center my-2 px-4">
+      <div className={`flex flex-col my-2 px-4 ${isReport ? "items-start" : "items-center"}`}>
         <div className={`text-base font-semibold text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
           {lines.map((line, i) => {
             if (isOptionsLine(line)) {
               const parts = line.split(" · ");
               return (
-                <div key={i} style={{ textAlign: "center" }} className="text-xl my-0.5">
+                <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-xl my-0.5">
                   {parts.map((p, j) => (
                     <span key={j}>
                       {j > 0 && <span className="text-foreground/40 mx-1">·</span>}
@@ -1440,7 +1440,7 @@ function ChatMessage({
               );
             }
             return (
-              <div key={i} style={{ textAlign: "center" }}>
+              <div key={i} style={{ textAlign: isReport ? "left" : "center" }}>
                 {line || "\u00A0"}
               </div>
             );
