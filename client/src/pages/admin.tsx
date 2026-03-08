@@ -65,12 +65,7 @@ export default function AdminPage() {
                 </TabsTrigger>
               )}
             </TabsList>
-            <a href="/api/admin/export/excel" download data-testid="button-export-excel">
-              <Button variant="outline" size="sm" className="shrink-0 h-9 gap-1.5 text-green-600 border-green-600/40 hover:bg-green-600/5">
-                <FileDown className="w-4 h-4" />
-                导出Excel
-              </Button>
-            </a>
+            <ExportDialog />
           </div>
 
           <TabsContent value="rooms">
@@ -93,6 +88,101 @@ export default function AdminPage() {
         </Tabs>
       </main>
     </div>
+  );
+}
+
+function ExportDialog() {
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  const handleExport = () => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const url = `/api/admin/export/excel${params.toString() ? "?" + params.toString() : ""}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setOpen(false);
+  };
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="button-export-excel"
+        className="shrink-0 h-9 gap-1.5 text-green-600 border-green-600/40 hover:bg-green-600/5"
+        onClick={() => setOpen(true)}
+      >
+        <FileDown className="w-4 h-4" />
+        导出Excel
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileDown className="w-4 h-4 text-green-500" />
+              导出报表
+            </DialogTitle>
+            <DialogDescription>
+              选择日期范围后导出，留空则导出全部数据。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm text-muted-foreground">开始日期</Label>
+                <Input
+                  data-testid="input-export-from"
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                  className="bg-background text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm text-muted-foreground">结束日期</Label>
+                <Input
+                  data-testid="input-export-to"
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  className="bg-background text-sm"
+                />
+              </div>
+            </div>
+
+            {(from || to) && (
+              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+                将导出 {from || "最早"} 至 {to || "最新"} 的数据
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                取消
+              </Button>
+              <Button
+                size="sm"
+                data-testid="button-confirm-export"
+                className="gap-1.5 bg-green-600 hover:bg-green-700 text-white"
+                onClick={handleExport}
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                {from || to ? "导出选定范围" : "导出全部数据"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

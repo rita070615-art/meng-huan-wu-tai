@@ -1558,10 +1558,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       storage.getAllUsers(),
     ]);
 
+    // ── Date range filter ─────────────────────────────────────────
+    const fromParam = req.query.from as string | undefined;
+    const toParam   = req.query.to   as string | undefined;
+    const fromDate  = fromParam ? new Date(fromParam) : null;
+    const toDate    = toParam   ? new Date(toParam + "T23:59:59.999Z") : null;
+
+    const inRange = (r: typeof rounds[0]) => {
+      if (!fromDate && !toDate) return true;
+      const d = r.closedAt ? new Date(r.closedAt) : r.createdAt ? new Date(r.createdAt) : null;
+      if (!d) return !fromDate; // open rounds only included when no from-filter
+      if (fromDate && d < fromDate) return false;
+      if (toDate && d > toDate) return false;
+      return true;
+    };
+
+    const filteredRounds = rounds.filter(inRange);
+    const dateLabel = (fromDate || toDate)
+      ? `${fromParam ?? "起始"}~${toParam ?? "至今"}`
+      : "全部";
+
     // ── Sheet 1: 玩家统计 ─────────────────────────────────────────
-    // Per-user bet stats from closed rounds
     const betStatsByUser = new Map<string, { count: number; turnover: number }>();
-    for (const r of rounds) {
+    for (const r of filteredRounds) {
       if (r.status !== "closed") continue;
       for (const b of r.bets) {
         const s = betStatsByUser.get(b.userId) || { count: 0, turnover: 0 };
@@ -1571,7 +1590,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    // Active/paused rounds for banker locked amount
+    // Active/paused rounds for banker locked amount (always current, not date-filtered)
     const activeBankerLocked = new Map<string, number>();
     for (const r of rounds) {
       if ((r.status === "open" || r.status === "paused") && r.bankerUserId && r.bankerMaxBet) {
@@ -1604,15 +1623,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .sort((a, b) => b["积分数"] - a["积分数"]);
 
     // ── Sheet 2: 轮次汇总 ─────────────────────────────────────────
-    const summaryRows = rounds.map(r => {
+    const summaryRows = filteredRounds.map(r => {
       const opts = (r.options as Array<{ key: string; label: string }>) || [];
       const totalPool = r.bets.reduce((s, b) => s + b.amount, 0);
       const winnerLabel = r.winnerOption ? (opts.find(o => o.key === r.winnerOption)?.label || r.winnerOption) : "未开奖";
       return {
         "房间": r.roomName,
         "轮次ID": r.id,
-        "开始时间": r.createdAt ? new Date(r.createdAt).toLocaleString("zh-CN") : "",
-        "结束时间": r.closedAt ? new Date(r.closedAt).toLocaleString("zh-CN") : "",
+        "开始时间": r.createdAt ? new Date(r.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Kuala_Lumpur" }) : "",
+        "结束时间": r.closedAt ? new Date(r.closedAt).toLocaleString("zh-CN", { timeZone: "Asia/Kuala_Lumpur" }) : "",
         "状态": r.status === "open" ? "进行中" : "已结束",
         "庄家": r.bankerNickname || "",
         "庄家属性": r.bankerOption ? (opts.find(o => o.key === r.bankerOption)?.label || r.bankerOption) : "",
@@ -1625,13 +1644,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
 
     // ── Sheet 3: 下注明细 ─────────────────────────────────────────
-    const betRows = rounds.flatMap(r => {
+    const betRows = filteredRounds.flatMap(r => {
       const opts = (r.options as Array<{ key: string; label: string }>) || [];
       return r.bets.map(b => {
         const optLabel = opts.find(o => o.key === b.option)?.label || b.option;
         return {
           "房间": r.roomName,
-          "时间": b.createdAt ? new Date(b.createdAt).toLocaleString("zh-CN") : "",
+          "时间": b.createdAt ? new Date(b.createdAt).toLocaleString("zh-CN", { timeZone: "Asia/Kuala_Lumpur" }) : "",
           "用户昵称": b.nickname || b.username,
           "账号": b.username,
           "下注属性": optLabel,
@@ -1643,10 +1662,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const wb = XLSX.utils.book_new();
 
-    // Style helper: header row bold + colored
     const makeSheet = (data: object[], sheetName: string) => {
       const ws = XLSX.utils.json_to_sheet(data);
-      // Set column widths
       if (data.length > 0) {
         ws["!cols"] = Object.keys(data[0]).map(() => ({ wch: 14 }));
       }
@@ -1657,8 +1674,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     makeSheet(summaryRows, "轮次汇总");
     makeSheet(betRows, "下注明细");
 
+    const safeLabel = dateLabel.replace(/[^a-zA-Z0-9\u4e00-\u9fa5~_-]/g, "");
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    res.setHeader("Content-Disposition", `attachment; filename="report_${Date.now()}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="report_${safeLabel}.xlsx"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.send(buf);
   });
