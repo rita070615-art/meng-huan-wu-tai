@@ -1384,6 +1384,7 @@ function ChatMessage({
   const menuRef = useRef<HTMLDivElement>(null);
   const isSystem = msg.type === "system";
   const isImage = msg.type === "image";
+  const isGif = isImage && /\.gif(\?|$)/i.test(msg.content);
   const isVideo = msg.type === "video";
   const isBet = msg.type === "bet" || (msg.type !== "system" && !isImage && !isVideo && msg.username != null && (msg.content.startsWith(`${msg.username}:`) || msg.content.startsWith(`${msg.username}：`)));
   const isOwn = msg.userId === currentUserId;
@@ -1419,8 +1420,16 @@ function ChatMessage({
     return (
       <div className="flex flex-col items-start gap-0.5 my-1">
         <span className="text-xs text-muted-foreground ml-1">{msg.username}</span>
-        <div className="rounded-2xl overflow-hidden max-w-[75vw] md:max-w-xs border border-border/40 shadow-sm">
-          {isImage ? (
+        {isGif ? (
+          // GIF: sticker-style, no frame/border
+          <img
+            src={msg.content}
+            alt="动图"
+            className="block max-w-[200px] max-h-[200px] object-contain"
+            data-testid={`img-media-${msg.id}`}
+          />
+        ) : isImage ? (
+          <div className="rounded-2xl overflow-hidden max-w-[75vw] md:max-w-xs border border-border/40 shadow-sm">
             <a href={msg.content} target="_blank" rel="noopener noreferrer">
               <img
                 src={msg.content}
@@ -1429,15 +1438,17 @@ function ChatMessage({
                 data-testid={`img-media-${msg.id}`}
               />
             </a>
-          ) : (
+          </div>
+        ) : (
+          <div className="rounded-2xl overflow-hidden max-w-[75vw] md:max-w-xs border border-border/40 shadow-sm">
             <video
               src={msg.content}
               controls
               className="block max-w-full max-h-72"
               data-testid={`video-media-${msg.id}`}
             />
-          )}
-        </div>
+          </div>
+        )}
         {isAdmin && onDelete && (
           <button
             className="ml-1 text-[10px] text-red-400 hover:text-red-500 transition-colors"
