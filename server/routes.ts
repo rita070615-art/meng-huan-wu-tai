@@ -1413,7 +1413,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       password: parsed.data.password,
       nickname: parsed.data.nickname || undefined,
     });
-    if (parsed.data.balance) await storage.updateUserBalance(user.id, parsed.data.balance);
+    if (parsed.data.balance) {
+      await storage.updateUserBalance(user.id, parsed.data.balance);
+      // Fire 充值 webhook for initial balance on account creation
+      const adminName = (req.session as any).nickname || (req.session as any).username || "管理员";
+      const playerName = parsed.data.nickname || parsed.data.username;
+      storage.getBotSettings().then(cfg => {
+        fireWebhooks([(cfg as any).webhookUrl2], {
+          type: "充值",
+          timestamp: new Date().toISOString(),
+          admin: adminName,
+          player: playerName,
+          amount: parsed.data.balance,
+          balanceBefore: 0,
+          balanceAfter: parsed.data.balance,
+        });
+      }).catch(() => {});
+    }
     if (parsed.data.role === "admin") await storage.setUserRole(user.id, "admin");
     const updated = await storage.getUser(user.id);
     res.json({ id: updated!.id, username: updated!.username, nickname: updated!.nickname, balance: updated!.balance, role: updated!.role });
