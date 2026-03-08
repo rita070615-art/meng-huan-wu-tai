@@ -895,8 +895,14 @@ export default function RoomPage() {
                         data-testid={`input-points-${opt.key}`}
                         type="number"
                         min={0}
+                        max={9}
                         value={pts}
-                        onChange={e => setOptionPoints(prev => ({ ...prev, [opt.key]: e.target.value }))}
+                        onChange={e => {
+                          const v = e.target.value.replace(/\D/g, "").slice(0, 1);
+                          if (v === "" || (parseInt(v) >= 0 && parseInt(v) <= 9)) {
+                            setOptionPoints(prev => ({ ...prev, [opt.key]: v }));
+                          }
+                        }}
                         placeholder="点"
                         className={`w-16 h-6 text-xs px-1.5 rounded border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary ${isWinner ? "border-green-500 ring-1 ring-green-500" : "border-border"}`}
                       />
