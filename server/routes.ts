@@ -1045,7 +1045,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (hasbanker) {
       reportLines.push("");
       reportLines.push(`🏆 本餐厨师（${bankerNameDisplay}）本轮净收益：${bankerNet >= 0 ? "+" : ""}${bankerNet.toLocaleString()}`);
-      reportLines.push("✅ 本轮厨房已完成出餐。");
     }
     if (historyEntries.length > 0) {
       reportLines.push("");
