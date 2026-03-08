@@ -16,20 +16,28 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
   const type = payload.type as string;
   const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
   if (type === "上庄抽水") {
-    return [
+    const newAmt = (payload.bankerMaxBet as number) - (payload.carryOver as number);
+    const afterPumpNew = newAmt - (payload.pumpAmount as number);
+    const totalEffective = afterPumpNew + (payload.carryOver as number);
+    const lines = [
       `🎰 **上庄抽水** \`${ts}\``,
-      `厨师：${payload.player}（${payload.bankerOption}）`,
-      `本局上限：${payload.bankerMaxBet}　续庄：${payload.carryOver}`,
-      `抽水率：${payload.pumpRate}%　抽水：${payload.pumpAmount}`,
-      `下庄抽水率：${payload.exitPumpRate}%`,
-    ].join("\n");
+      `庄家：${payload.player}（${payload.bankerOption}）`,
+      `本局标庄：${payload.bankerMaxBet}`,
+      `上庄抽水率：${payload.pumpRate}%　抽水后：${afterPumpNew}`,
+    ];
+    if ((payload.carryOver as number) > 0) {
+      lines.push(`续庄抽水后：${payload.carryOver}`);
+    }
+    lines.push(`下庄抽水率：${payload.exitPumpRate}%`);
+    lines.push(`**RMB ${totalEffective}**`);
+    return lines.join("\n");
   }
   if (type === "下庄抽水") {
     return [
       `💸 **下庄抽水** \`${ts}\``,
-      `厨师：${payload.player}`,
-      `毛利润：${payload.grossProfit}　抽水率：${payload.exitPumpRate}%`,
-      `抽水：${payload.exitPumpAmount}　净回款：${payload.netBankerReturn}`,
+      `庄家：${payload.player}`,
+      `下庄抽水率：${payload.exitPumpRate}%　抽水：${payload.exitPumpAmount}`,
+      `本局庄家输赢：${payload.netBankerReturn}`,
     ].join("\n");
   }
   if (type === "充值") {
