@@ -1412,11 +1412,11 @@ function ChatMessage({
     const isReport = lines.length >= 5;
     return (
       <div className="flex flex-col items-center my-2 px-4">
-        <div className={`text-base font-semibold text-center text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
+        <div className={`text-base font-semibold text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
           {lines.map((line, i) => (
-            <span key={i} className="block">
+            <div key={i} style={{ textAlign: "center" }}>
               {line || "\u00A0"}
-            </span>
+            </div>
           ))}
         </div>
         {isAdmin && onDelete && (
