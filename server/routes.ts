@@ -28,19 +28,6 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
       `平台盈利：**RMB ${fmt(pumpAmt)}**`,
     ].join("\n");
   }
-  if (type === "续庄抽水") {
-    const carryOver = payload.carryOver as number;
-    const pumpRate = payload.pumpRate as number;
-    const carryPump = Math.floor(carryOver * pumpRate / 100);
-    return [
-      `🎰 **续庄抽水**`,
-      `时间：${ts}`,
-      `庄家：${payload.player}`,
-      `续庄金额：${fmt(carryOver)}`,
-      `上庄抽水率：${pumpRate}%`,
-      `平台盈利：**RMB ${fmt(carryPump)}**`,
-    ].join("\n");
-  }
   if (type === "下庄抽水") {
     const grossProfit = payload.grossProfit as number;
     const exitPumpRate = payload.exitPumpRate as number;
@@ -658,14 +645,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pumpAmount: pumpDeductedStart,
         exitPumpRate,
       }).catch(() => {});
-      if (carryOver > 0) {
-        fireWebhooks(whUrls, {
-          type: "续庄抽水",
-          player: playerName,
-          carryOver,
-          pumpRate,
-        }).catch(() => {});
-      }
     }
 
     // Build start-round system message with banker info
