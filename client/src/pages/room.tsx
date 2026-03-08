@@ -1410,14 +1410,41 @@ function ChatMessage({
   if (isSystem) {
     const lines = msg.content.split("\n");
     const isReport = lines.length >= 5;
+
+    const OPTION_COLORS: Record<string, string> = {
+      "体力": "#22c55e",
+      "法力": "#a855f7",
+      "力量": "#ef4444",
+      "耐力": "#3b82f6",
+    };
+    const isOptionsLine = (line: string) => {
+      const parts = line.split(" · ");
+      return parts.length >= 2 && parts.every(p => p.trim() in OPTION_COLORS);
+    };
+
     return (
       <div className="flex flex-col items-center my-2 px-4">
         <div className={`text-base font-semibold text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
-          {lines.map((line, i) => (
-            <div key={i} style={{ textAlign: "center" }}>
-              {line || "\u00A0"}
-            </div>
-          ))}
+          {lines.map((line, i) => {
+            if (isOptionsLine(line)) {
+              const parts = line.split(" · ");
+              return (
+                <div key={i} style={{ textAlign: "center" }} className="text-xl my-0.5">
+                  {parts.map((p, j) => (
+                    <span key={j}>
+                      {j > 0 && <span className="text-foreground/40 mx-1">·</span>}
+                      <span style={{ color: OPTION_COLORS[p.trim()] }} className="font-bold">{p.trim()}</span>
+                    </span>
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <div key={i} style={{ textAlign: "center" }}>
+                {line || "\u00A0"}
+              </div>
+            );
+          })}
         </div>
         {isAdmin && onDelete && (
           <button
