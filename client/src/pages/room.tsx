@@ -1550,30 +1550,79 @@ function ChatMessage({
       const parts = line.split(" · ");
       return parts.length >= 2 && parts.every(p => p.trim() in OPTION_COLORS);
     };
+    const isSectionHeader = (line: string) =>
+      line.includes("本局出餐") || line.includes("本局餐费") || line.startsWith("📜");
+    const isWinLine = (line: string) => /^🏆/.test(line);
+    const isCompleteLine = (line: string) => /^✅/.test(line);
+    const isBudgetLine = (line: string) => /^💰/.test(line);
+    const isTimestampLine = (line: string) => /^📅/.test(line);
+
+    const renderLine = (line: string, i: number) => {
+      if (isOptionsLine(line)) {
+        const parts = line.split(" · ");
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-xl my-0.5">
+            {parts.map((p, j) => (
+              <span key={j}>
+                {j > 0 && <span className="text-foreground/40 mx-1">·</span>}
+                <span style={{ color: OPTION_COLORS[p.trim()] }} className="font-bold">{p.trim()}</span>
+              </span>
+            ))}
+          </div>
+        );
+      }
+      if (isSectionHeader(line)) {
+        const col = line.includes("本局出餐") ? "#f97316"
+          : line.includes("本局餐费") ? "#a855f7"
+          : "#f59e0b";
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center", color: col }} className="text-base font-extrabold mt-3 mb-0.5 tracking-wide">
+            {line}
+          </div>
+        );
+      }
+      if (isWinLine(line)) {
+        const isPositive = /：\+/.test(line);
+        const isNegative = /：-/.test(line);
+        const col = isPositive ? "#22c55e" : isNegative ? "#ef4444" : "#f59e0b";
+        return (
+          <div key={i} style={{ color: col, textAlign: isReport ? "left" : "center" }} className="text-sm font-bold">
+            {line}
+          </div>
+        );
+      }
+      if (isCompleteLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-sm font-semibold text-green-400 mt-1">
+            {line}
+          </div>
+        );
+      }
+      if (isBudgetLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-sm text-amber-400 font-medium">
+            {line}
+          </div>
+        );
+      }
+      if (isTimestampLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-xs text-muted-foreground font-normal">
+            {line}
+          </div>
+        );
+      }
+      return (
+        <div key={i} style={{ textAlign: isReport ? "left" : "center" }}>
+          {line || "\u00A0"}
+        </div>
+      );
+    };
 
     return (
       <div className={`flex flex-col my-2 px-4 ${isReport ? "items-start" : "items-center"}`}>
-        <div className={`text-base font-semibold text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
-          {lines.map((line, i) => {
-            if (isOptionsLine(line)) {
-              const parts = line.split(" · ");
-              return (
-                <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-xl my-0.5">
-                  {parts.map((p, j) => (
-                    <span key={j}>
-                      {j > 0 && <span className="text-foreground/40 mx-1">·</span>}
-                      <span style={{ color: OPTION_COLORS[p.trim()] }} className="font-bold">{p.trim()}</span>
-                    </span>
-                  ))}
-                </div>
-              );
-            }
-            return (
-              <div key={i} style={{ textAlign: isReport ? "left" : "center" }}>
-                {line || "\u00A0"}
-              </div>
-            );
-          })}
+        <div className={`text-sm font-semibold text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
+          {lines.map((line, i) => renderLine(line, i))}
         </div>
         {isAdmin && onDelete && (
           <button
