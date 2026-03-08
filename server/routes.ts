@@ -28,6 +28,18 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
       `平台盈利：**RMB ${fmt(pumpAmt)}**`,
     ].join("\n");
   }
+  if (type === "续庄抽水") {
+    const newPortion = (payload.bankerMaxBet as number) - (payload.carryOver as number);
+    const pumpAmt = payload.pumpAmount as number;
+    return [
+      `🎰 **续庄抽水**`,
+      `时间：${ts}`,
+      `庄家：${payload.player}`,
+      `追加资金：${fmt(newPortion)}`,
+      `上庄抽水率：${payload.pumpRate}%`,
+      `平台盈利：**RMB ${fmt(pumpAmt)}**`,
+    ].join("\n");
+  }
   if (type === "下庄抽水") {
     const grossProfit = payload.grossProfit as number;
     const exitPumpRate = payload.exitPumpRate as number;
@@ -629,14 +641,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.updateUserBalance(bankerUserId, banker.balance - newAmount);
     }
 
-    // Fire webhook: 上庄抽水 → URL1
+    // Fire webhook: 上庄抽水 or 续庄抽水 → URL1
     const pumpDeductedStart = Math.floor(newAmount * pumpRate / 100);
     if (pumpDeductedStart > 0 || exitPumpRate > 0) {
       const wsCfg = await storage.getBotSettings();
       const whUrls = [(wsCfg as any).webhookUrl1];
       const playerName = bankerNickname || banker.nickname || banker.username;
+      // 续庄 (has carry-over) → 续庄抽水; first-time banker → 上庄抽水
+      const webhookType = carryOver > 0 ? "续庄抽水" : "上庄抽水";
       fireWebhooks(whUrls, {
-        type: "上庄抽水",
+        type: webhookType,
         player: playerName,
         bankerOption: bankerOption,
         bankerMaxBet: Number(bankerMaxBet),
