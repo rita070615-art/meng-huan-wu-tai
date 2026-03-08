@@ -1801,14 +1801,39 @@ function PlatformStats() {
     totalUserBalances: number;
     platformNetCash: number;
     pumpCollected: number;
+    periodPump: number;
+    periodRounds: number;
+    periodBets: number;
+    hasDateFilter: boolean;
   };
 
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
+
+  const qParams = new URLSearchParams();
+  if (appliedFrom) qParams.set("from", appliedFrom);
+  if (appliedTo) qParams.set("to", appliedTo);
+  const qString = qParams.toString();
+
   const { data, isLoading, refetch, isFetching } = useQuery<Stats>({
-    queryKey: ["/api/admin/platform-stats"],
+    queryKey: ["/api/admin/platform-stats", qString],
+    queryFn: () => fetch(`/api/admin/platform-stats${qString ? "?" + qString : ""}`, { credentials: "include" }).then(r => { if (!r.ok) throw new Error("加载失败"); return r.json(); }),
     refetchInterval: false,
   });
 
   const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const applyFilter = () => {
+    setAppliedFrom(from);
+    setAppliedTo(to);
+  };
+
+  const clearFilter = () => {
+    setFrom(""); setTo("");
+    setAppliedFrom(""); setAppliedTo("");
+  };
 
   const cards = data
     ? [
@@ -1862,7 +1887,7 @@ function PlatformStats() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="font-semibold text-lg flex items-center gap-2">
             <BarChart2 className="w-5 h-5 text-primary" />
@@ -1883,30 +1908,87 @@ function PlatformStats() {
         </Button>
       </div>
 
+      {/* Date filter row */}
+      <div className="bg-card border border-card-border rounded-xl p-4 space-y-3">
+        <p className="text-sm font-medium flex items-center gap-2">
+          <BarChart2 className="w-4 h-4 text-muted-foreground" />
+          游戏抽水期间筛选
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">开始日期</Label>
+            <Input data-testid="input-stats-from" type="date" value={from} onChange={e => setFrom(e.target.value)} className="bg-background text-sm h-9" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">结束日期</Label>
+            <Input data-testid="input-stats-to" type="date" value={to} onChange={e => setTo(e.target.value)} className="bg-background text-sm h-9" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" data-testid="button-apply-stats-filter" onClick={applyFilter} disabled={isFetching} className="gap-1.5">
+            <BarChart2 className="w-3.5 h-3.5" />
+            查询
+          </Button>
+          {(appliedFrom || appliedTo) && (
+            <Button size="sm" variant="outline" data-testid="button-clear-stats-filter" onClick={clearFilter}>
+              清除筛选
+            </Button>
+          )}
+        </div>
+        {(appliedFrom || appliedTo) && (
+          <p className="text-xs text-muted-foreground">
+            当前查询：{appliedFrom || "最早"} 至 {appliedTo || "最新"}
+          </p>
+        )}
+      </div>
+
       {isLoading ? (
         <div className="grid sm:grid-cols-2 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+          {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
         </div>
       ) : data ? (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {cards.map((card) => (
-            <div
-              key={card.label}
-              data-testid={`stat-${card.label}`}
-              className="bg-card border border-card-border rounded-xl p-5 space-y-2"
-            >
+        <div className="space-y-4">
+          {/* Period pump — only shown when date filter active */}
+          {data.hasDateFilter && (
+            <div className="bg-card border border-primary/30 rounded-xl p-5 space-y-2">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className={`w-8 h-8 rounded-lg ${card.bg} ${card.color} flex items-center justify-center shrink-0`}>
-                  {card.icon}
+                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                  <BarChart2 className="w-5 h-5" />
                 </div>
-                <span className="font-medium">{card.label}</span>
+                <span className="font-medium">期间游戏抽水</span>
+                <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full ml-auto">
+                  {appliedFrom || "最早"} ~ {appliedTo || "最新"}
+                </span>
               </div>
-              <p className={`text-2xl font-bold tabular-nums ${card.color}`}>
-                {card.sign}{fmt(card.value)}
+              <p className="text-2xl font-bold tabular-nums text-primary">
+                +{fmt(data.periodPump)}
               </p>
-              <p className="text-xs text-muted-foreground">{card.desc}</p>
+              <p className="text-xs text-muted-foreground">
+                期间共 {data.periodRounds} 轮 · {data.periodBets} 笔下注 · 抽水按实际出庄率计算
+              </p>
             </div>
-          ))}
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            {cards.map((card) => (
+              <div
+                key={card.label}
+                data-testid={`stat-${card.label}`}
+                className="bg-card border border-card-border rounded-xl p-5 space-y-2"
+              >
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className={`w-8 h-8 rounded-lg ${card.bg} ${card.color} flex items-center justify-center shrink-0`}>
+                    {card.icon}
+                  </div>
+                  <span className="font-medium">{card.label}</span>
+                </div>
+                <p className={`text-2xl font-bold tabular-nums ${card.color}`}>
+                  {card.sign}{fmt(card.value)}
+                </p>
+                <p className="text-xs text-muted-foreground">{card.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="text-center text-muted-foreground py-8 text-sm">加载失败，请刷新重试</div>

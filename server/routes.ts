@@ -1674,20 +1674,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     makeSheet(summaryRows, "轮次汇总");
     makeSheet(betRows, "下注明细");
 
-    const safeLabel = dateLabel.replace(/[^a-zA-Z0-9\u4e00-\u9fa5~_-]/g, "");
+    // Build ASCII-safe filename (dates are YYYY-MM-DD, safe for headers)
+    const filenamePart = (fromParam || toParam)
+      ? `${fromParam ?? "start"}_${toParam ?? "end"}`
+      : `all_${Date.now()}`;
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-    res.setHeader("Content-Disposition", `attachment; filename="report_${safeLabel}.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="report_${filenamePart}.xlsx"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.send(buf);
   });
 
   // Platform financial stats — only accessible by @DONG798 / DONG798
   app.get("/api/admin/platform-stats", requireAdmin, async (req, res) => {
-    const me = await storage.getUserById(req.session.userId!);
-    if (!me || !["DONG798", "@DONG798"].includes(me.username)) {
+    if (!["DONG798", "@DONG798"].includes(req.session.username ?? "")) {
       return res.status(403).json({ error: "无权限" });
     }
-    const users = await storage.getAllUsers();
+
+    const fromParam = req.query.from as string | undefined;
+    const toParam   = req.query.to   as string | undefined;
+    const fromDate  = fromParam ? new Date(fromParam) : null;
+    const toDate    = toParam ? new Date(toParam + "T23:59:59.999Z") : null;
+
+    const [users, rounds] = await Promise.all([
+      storage.getAllUsers(),
+      storage.getAllBetRoundsWithBets(),
+    ]);
+
     let totalDeposits = 0;
     let totalWithdrawals = 0;
     let totalUserBalances = 0;
@@ -1697,13 +1709,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       totalUserBalances += u.balance ?? 0;
     }
     const platformNetCash = totalDeposits - totalWithdrawals;
-    const pumpCollected = platformNetCash - totalUserBalances;
+    const pumpCollected   = platformNetCash - totalUserBalances;
+
+    // Period pump from game rounds in selected date range
+    let periodPump = 0;
+    let periodRounds = 0;
+    let periodBets = 0;
+    for (const r of rounds) {
+      if (r.status !== "closed") continue;
+      const d = r.closedAt ? new Date(r.closedAt) : r.createdAt ? new Date(r.createdAt) : null;
+      if (fromDate && d && d < fromDate) continue;
+      if (toDate && d && d > toDate) continue;
+      periodRounds += 1;
+      periodBets += r.bets.length;
+      const pumpRate = (r as any).pumpRate ?? 0;
+      const carryOver = (r as any).carryOver ?? 0;
+      const bankerMax = (r as any).bankerMaxBet ?? 0;
+      const newPortion = Math.max(0, bankerMax - carryOver);
+      periodPump += Math.floor(newPortion * pumpRate / 100);
+    }
+
     return res.json({
       totalDeposits,
       totalWithdrawals,
       totalUserBalances,
       platformNetCash,
       pumpCollected,
+      periodPump,
+      periodRounds,
+      periodBets,
+      hasDateFilter: !!(fromDate || toDate),
     });
   });
 
