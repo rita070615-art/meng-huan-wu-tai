@@ -42,12 +42,16 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
     ].join("\n");
   }
   if (type === "下庄抽水") {
+    const grossProfit = payload.grossProfit as number;
+    const exitPumpRate = payload.exitPumpRate as number;
+    const platformProfit = (grossProfit * exitPumpRate / 100).toFixed(2);
     return [
-      `💸 **下庄抽水**`,
+      `💰 **下庄抽水**`,
       `时间：${ts}`,
       `庄家：${payload.player}`,
-      `下庄抽水率：${payload.exitPumpRate}%　抽水：${fmt(payload.exitPumpAmount as number)}`,
       `本局庄家输赢：${fmt(payload.netBankerReturn as number)}`,
+      `下庄抽水率：${exitPumpRate}%`,
+      `平台盈利：**RMB ${platformProfit}**`,
     ].join("\n");
   }
   if (type === "充值") {
