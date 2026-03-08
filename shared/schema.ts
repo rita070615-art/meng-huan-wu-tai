@@ -43,6 +43,7 @@ export const rooms = pgTable("rooms", {
   password: text("password").default(""),
   chatMuted: boolean("chat_muted").notNull().default(false),
   betHistory: text("bet_history").default(""),
+  pendingBanker: jsonb("pending_banker"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

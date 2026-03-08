@@ -161,6 +161,10 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async setPendingBanker(roomId: string, banker: object | null): Promise<void> {
+    await db.update(rooms).set({ pendingBanker: banker } as any).where(eq(rooms.id, roomId));
+  }
+
   async appendBetHistory(roomId: string, entry: string): Promise<void> {
     const room = await this.getRoom(roomId);
     if (!room) return;

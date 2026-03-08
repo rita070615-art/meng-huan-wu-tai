@@ -54,6 +54,7 @@ export default function RoomPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsDestroyedRef = useRef(false);
+  const bankerDismissedRef = useRef(false);
 
   const { data: room } = useQuery<Room>({ queryKey: [`/api/rooms/${roomId}`], enabled: !!roomId });
   const { data: messages, isLoading: msgsLoading, error: msgsError } = useQuery<Message[]>({
@@ -98,6 +99,24 @@ export default function RoomPage() {
   useEffect(() => {
     if (room) setChatMuted(!!(room as any).chatMuted);
   }, [room]);
+
+  // Restore persistedBanker from server when component mounts (survives page navigation)
+  useEffect(() => {
+    if (room && liveRound === null && persistedBanker === null && !bankerDismissedRef.current) {
+      const pb = (room as any).pendingBanker;
+      if (pb && pb.userId && pb.option) {
+        setPersistedBanker({
+          userId: pb.userId,
+          nickname: pb.nickname || pb.userId,
+          option: pb.option,
+          bankerReturn: pb.bankerReturn ?? 0,
+          pumpRate: pb.pumpRate != null ? String(pb.pumpRate) : "",
+          playerPumpRate: pb.playerPumpRate != null ? String(pb.playerPumpRate) : "",
+          exitPumpRate: pb.exitPumpRate != null ? String(pb.exitPumpRate) : "",
+        });
+      }
+    }
+  }, [room, liveRound]);
 
   useEffect(() => {
     if (betRoundData !== undefined) {
@@ -155,6 +174,7 @@ export default function RoomPage() {
           setOptionPoints({});
           setSelectedOptions(new Set());
           setDoubleMode(false);
+          bankerDismissedRef.current = false;
           // Auto-persist banker for next round
           if (data.round?.bankerUserId && data.round?.bankerOption) {
             setPersistedBanker({
@@ -184,6 +204,11 @@ export default function RoomPage() {
         }
         if (data.type === "BET_ROUND_RESUMED") {
           setLiveRound((prev) => prev ? { ...prev, status: "open" } : null);
+        }
+        if (data.type === "PENDING_BANKER_CLEARED") {
+          bankerDismissedRef.current = true;
+          setPersistedBanker(null);
+          queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}`] });
         }
         if (data.type === "ROOM_CHAT_MUTED") {
           setChatMuted(data.chatMuted);
@@ -275,6 +300,16 @@ export default function RoomPage() {
     mutationFn: ({ optionPoints: pts, double: dbl }: { optionPoints: Record<string, number>; double: boolean }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round/close`, { optionPoints: pts, double: dbl }),
     onError: (e: Error) => toast({ title: "结束失败", description: e.message, variant: "destructive" }),
+  });
+
+  const dismissBankerMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/rooms/${roomId}/pending-banker`),
+    onSuccess: () => {
+      bankerDismissedRef.current = true;
+      setPersistedBanker(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}`] });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
   const pauseRoundMutation = useMutation({
@@ -552,7 +587,7 @@ export default function RoomPage() {
                     <button
                       type="button"
                       data-testid="button-dismiss-banker"
-                      onClick={() => { setPersistedBanker(null); setAddToLimit(""); setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); }}
+                      onClick={() => { dismissBankerMutation.mutate(); setAddToLimit(""); setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); }}
                       className="text-[11px] text-red-400 border border-red-400/40 rounded px-2 py-0.5 hover:bg-red-400/10 transition-colors"
                     >
                       下庄

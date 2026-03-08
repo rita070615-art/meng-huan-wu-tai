@@ -689,6 +689,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       content: startContent,
       type: "system",
     });
+    // Clear any pending banker decision now that a new round has started
+    await storage.setPendingBanker(req.params.id, null);
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
 
     // Auto-bet: trigger shill accounts with staggered random delays to mimic real users
@@ -1066,6 +1068,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
     const exitPumpRateBcast = (round as any).exitPumpRate ?? 0;
+    // Persist banker decision state so admin can navigate away and return without losing context
+    if (closed.bankerUserId && closed.bankerOption) {
+      await storage.setPendingBanker(req.params.id, {
+        userId: closed.bankerUserId,
+        nickname: (closed as any).bankerNickname || closed.bankerUserId,
+        option: closed.bankerOption,
+        bankerReturn,
+        pumpRate,
+        playerPumpRate,
+        exitPumpRate: exitPumpRateBcast,
+      });
+    }
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate, exitPumpRate: exitPumpRateBcast });
 
     // Post a balance board: every user currently connected to this room + shills assigned here
@@ -1104,6 +1118,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     res.json(closed);
+  });
+
+  // Admin explicitly dismisses the banker (下庄) — clears pending state without starting a new round
+  app.delete("/api/rooms/:id/pending-banker", requireAdmin, async (req, res) => {
+    await storage.setPendingBanker(req.params.id, null);
+    broadcast(req.params.id, { type: "PENDING_BANKER_CLEARED" });
+    res.json({ ok: true });
   });
 
   // Pause / Resume round
@@ -1152,6 +1173,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const cancelled = await storage.cancelBetRound(round.id);
+    await storage.setPendingBanker(req.params.id, null);
     const msg = await storage.createMessage({
       roomId: req.params.id,
       content: "本轮点餐已取消，所有积分已退还。",
