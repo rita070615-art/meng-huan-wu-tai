@@ -1049,22 +1049,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     if (historyEntries.length > 0) {
       reportLines.push("");
-      // Separate new compact entries (contains "@") from legacy entries
       const compactEntries = historyEntries.filter(h => /^\d+@/.test(h));
-      const legacyEntries = historyEntries.filter(h => !/^\d+@/.test(h));
       if (compactEntries.length > 0) {
-        // Derive label key from the most recent compact entry
         const lastCompact = compactEntries[compactEntries.length - 1];
         const labelPart = lastCompact.split("@")[1] || "";
-        // Abbreviate: first char of each label
         const abbrev = labelPart.split("·").map((l: string) => l.charAt(0)).join("");
         const trendDigits = compactEntries.slice(-20).map(h => h.split("@")[0]).join("  ");
         reportLines.push(`📜 历史走势（${abbrev}）`);
         reportLines.push(trendDigits);
-      }
-      if (legacyEntries.length > 0) {
-        if (compactEntries.length === 0) reportLines.push("📜 历史出餐记录");
-        legacyEntries.slice(-5).forEach(h => reportLines.push(h));
       }
     }
     const reportContent = reportLines.join("\n");
