@@ -1434,7 +1434,7 @@ function ChatMessage({
     }
     return (
       <div className="flex justify-center my-1.5 px-2">
-        <div className="bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs text-center w-full max-w-sm px-3 py-1 rounded-full">
+        <div className={`bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-sm text-center w-full max-w-sm ${lines.length > 1 ? "px-4 py-2.5 rounded-xl" : "px-3 py-1.5 rounded-full"}`}>
           {lines.map((line, i) => (
             <span key={i} className="block leading-snug">
               {line || "\u00A0"}

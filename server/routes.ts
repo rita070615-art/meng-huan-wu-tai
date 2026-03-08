@@ -14,7 +14,7 @@ import express from "express";
 
 function formatWebhookContent(payload: Record<string, unknown>): string {
   const type = payload.type as string;
-  const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Kuala_Lumpur" });
   const fmt = (n: number) => n.toLocaleString("en-US");
   if (type === "上庄抽水") {
     const newPortion = (payload.bankerMaxBet as number) - (payload.carryOver as number);
@@ -669,13 +669,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const playableOpts = (options as Array<{ key: string; label?: string }>)
       .filter(o => o.key !== bankerOption)
       .map(o => o.label || optLabelMap[o.key] || o.key)
-      .join(" / ");
+      .join(" · ");
     // Effective fund = after deducting 上庄抽水 from new portion only
     const effectiveFundDisplay = (Math.floor(newAmount * (1 - pumpRate / 100)) + carryOver).toLocaleString();
     const startContent = [
-      `厨师：${bankerNickStr}（${bankerOptLabel}）`,
-      `本局可点：${playableOpts}`,
-      `本轮厨房预算：${effectiveFundDisplay}`,
+      `👨‍🍳 当前厨师：${bankerNickStr}（${bankerOptLabel}）`,
+      ``,
+      `📋 本轮可点属性`,
+      playableOpts,
+      ``,
+      `💰 本轮厨房预算：${effectiveFundDisplay}`,
     ].join("\n");
     const msg = await storage.createMessage({
       roomId: req.params.id,
@@ -912,10 +915,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
     }
 
-    // Build timestamp
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const timeStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    // Build timestamp in Malaysia time (UTC+8)
+    const mytParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kuala_Lumpur",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+    }).formatToParts(new Date());
+    const get = (type: string) => mytParts.find(p => p.type === type)?.value ?? "00";
+    const timeStr = `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 
     // Build points display: 体力 8 · 法力 5 · 力量 6 · 耐力 2 in B,C,A,D order
     const displayOrder = ["B","C","A","D"];
