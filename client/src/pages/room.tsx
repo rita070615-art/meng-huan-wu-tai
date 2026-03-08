@@ -1223,8 +1223,8 @@ export default function RoomPage() {
           )}
         </div>
 
-        {/* Right sidebar: round status (desktop only) */}
-        <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col overflow-hidden border-l border-border bg-card/30">
+        {/* Right sidebar: round status (admin only, desktop only) */}
+        {isAdmin && <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col overflow-hidden border-l border-border bg-card/30">
           <div className="p-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-primary" />
@@ -1336,7 +1336,7 @@ export default function RoomPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
 
       </div>
     </div>
