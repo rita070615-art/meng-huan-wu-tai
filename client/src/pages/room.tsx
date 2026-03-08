@@ -390,21 +390,28 @@ export default function RoomPage() {
     if (selectedOptions.size === 0) return toast({ title: "请选择菜单选项", variant: "destructive" });
     const amt = parseInt(betAmount);
     if (!amt || amt < 1) return toast({ title: "请输入有效金额", variant: "destructive" });
+    const totalRequired = amt * selectedOptions.size;
+    if ((user?.balance ?? 0) < totalRequired) {
+      return toast({
+        title: "余额不足",
+        description: `选了 ${selectedOptions.size} 个选项共需 ${totalRequired.toLocaleString()} 积分，当前余额 ${(user?.balance ?? 0).toLocaleString()}`,
+        variant: "destructive",
+      });
+    }
     if (selectedOptions.size === 1) {
       setPendingBet({ option: [...selectedOptions][0], amount: amt });
     } else {
-      // Multi-option: submit all at once without confirmation dialog
+      // Multi-option: submit all sequentially
       const keys = [...selectedOptions];
       const first = keys[0];
       betMutation.mutate({ option: first, amount: amt }, {
         onSuccess: () => {
-          // Submit remaining bets sequentially
           const rest = keys.slice(1);
           const submitNext = (idx: number) => {
             if (idx >= rest.length) return;
             apiRequest("POST", `/api/rooms/${roomId}/bets`, { option: rest[idx], amount: amt })
               .then(() => submitNext(idx + 1))
-              .catch(() => {});
+              .catch((e: Error) => toast({ title: "部分点餐失败", description: e.message, variant: "destructive" }));
           };
           submitNext(0);
           setSelectedOptions(new Set());
