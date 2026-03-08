@@ -77,7 +77,7 @@ export default function AuthPage() {
     },
   });
 
-  if (!isLoading && user) return <Redirect to="/" />;
+  if (!isLoading && user && !showSecurityModal) return <Redirect to="/" />;
 
   const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
