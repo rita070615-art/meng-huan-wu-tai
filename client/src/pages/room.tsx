@@ -92,6 +92,16 @@ export default function RoomPage() {
     refetchInterval: 20000,
   });
 
+  const { data: lowBalanceBotsData, refetch: refetchLowBalanceBots } = useQuery<Array<{ username: string; balance: number; required: number }>>({
+    queryKey: ["/api/admin/low-balance-bots"],
+    enabled: !!isAdmin,
+    refetchInterval: 8000,
+  });
+
+  useEffect(() => {
+    if (lowBalanceBotsData) setLowBalanceBots(lowBalanceBotsData);
+  }, [lowBalanceBotsData]);
+
   useEffect(() => {
     if (messages) setLiveMessages(messages);
   }, [messages]);
@@ -213,6 +223,9 @@ export default function RoomPage() {
         if (data.type === "ROOM_CHAT_MUTED") {
           setChatMuted(data.chatMuted);
         }
+        if (data.type === "BOT_LOW_BALANCE") {
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/low-balance-bots"] });
+        }
       } catch {}
     };
 
@@ -295,6 +308,7 @@ export default function RoomPage() {
   });
 
   const [doubleMode, setDoubleMode] = useState(false);
+  const [lowBalanceBots, setLowBalanceBots] = useState<Array<{ username: string; balance: number; required: number }>>([]);
 
   const closeRoundMutation = useMutation({
     mutationFn: ({ optionPoints: pts, double: dbl }: { optionPoints: Record<string, number>; double: boolean }) =>
@@ -502,6 +516,35 @@ export default function RoomPage() {
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
+
+      {isAdmin && lowBalanceBots.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-background border-2 border-yellow-500 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-base font-bold text-yellow-500">托管账号积分不足</h3>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">以下托管账号余额不足，无法参与下注。请为其充值后弹窗将自动消失。</p>
+            <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+              {lowBalanceBots.map((bot) => (
+                <div key={bot.username} className="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
+                  <span className="font-semibold text-sm text-foreground">{bot.username}</span>
+                  <div className="text-right">
+                    <div className="text-xs text-red-400">当前：{bot.balance.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">需要：{bot.required.toLocaleString()}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              className="w-full text-xs text-muted-foreground hover:text-foreground py-1 transition-colors"
+              onClick={() => refetchLowBalanceBots()}
+            >
+              点击刷新检查
+            </button>
+          </div>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="border-b border-border bg-primary/5">

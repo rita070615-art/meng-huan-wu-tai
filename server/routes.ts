@@ -122,6 +122,7 @@ type WsClient = {
   userId: string;
   username: string;
   roomId: string;
+  role: string;
   isAlive: boolean;
   lastActivity: number;
 };
@@ -157,6 +158,15 @@ function broadcastToUser(userId: string, data: object) {
 
 function broadcastToAdmins(data: object) {
   broadcastAll(data);
+}
+
+function broadcastToRoomAdmins(roomId: string, data: object) {
+  const msg = JSON.stringify(data);
+  wsClients.forEach((c) => {
+    if (c.roomId === roomId && c.role === "admin" && c.ws.readyState === WebSocket.OPEN) {
+      c.ws.send(msg);
+    }
+  });
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -727,12 +737,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               const maxStep = Math.max(minStep, Math.floor(botCfg.maxAmount / 50));
               const amount = (minStep + Math.floor(Math.random() * (maxStep - minStep + 1))) * 50;
               if (shillBalance < amount) {
-                const warnMsg = await storage.createMessage({
-                  roomId,
-                  content: `⚠️ @${shillUsername} 积分不足（${shillBalance}），此条无效`,
-                  type: "system",
+                broadcastToRoomAdmins(roomId, {
+                  type: "BOT_LOW_BALANCE",
+                  username: shillUsername,
+                  balance: shillBalance,
+                  required: amount,
                 });
-                broadcast(roomId, { type: "MESSAGE", message: warnMsg });
                 return;
               }
               // Check effective cap before shill bet (pump only on new portion)
@@ -1513,6 +1523,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(settings);
   });
 
+  app.get("/api/admin/low-balance-bots", requireAdmin, async (req, res) => {
+    const botCfg = await storage.getBotSettings();
+    const allShills = await storage.getShillUsers();
+    const minRequired = Math.max(50, Math.ceil(botCfg.minAmount / 50) * 50);
+    const low = allShills
+      .filter(s => s.balance < minRequired)
+      .map(s => ({ username: s.username, balance: s.balance, required: minRequired }));
+    res.json(low);
+  });
+
   // WEBSOCKET
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
@@ -1848,13 +1868,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   wss.on("close", () => clearInterval(heartbeat));
 
-  wss.on("connection", (ws, req) => {
+  wss.on("connection", async (ws, req) => {
     const url = new URL(req.url || "", `http://localhost`);
     const roomId = url.searchParams.get("roomId") || "";
     const userId = url.searchParams.get("userId") || "";
     const username = url.searchParams.get("username") || "";
 
-    const client: WsClient = { ws, userId, username, roomId, isAlive: true, lastActivity: Date.now() };
+    const userRecord = userId ? await storage.getUser(userId) : null;
+    const role = userRecord?.role || "user";
+
+    const client: WsClient = { ws, userId, username, roomId, role, isAlive: true, lastActivity: Date.now() };
     wsClients.push(client);
 
     ws.on("pong", () => { client.isAlive = true; client.lastActivity = Date.now(); });
