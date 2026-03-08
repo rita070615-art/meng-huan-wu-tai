@@ -99,7 +99,10 @@ export default function RoomPage() {
   });
 
   useEffect(() => {
-    if (lowBalanceBotsData) setLowBalanceBots(lowBalanceBotsData);
+    if (lowBalanceBotsData) {
+      setLowBalanceBots(lowBalanceBotsData);
+      if (lowBalanceBotsData.length > 0) setBotAlertDismissed(false);
+    }
   }, [lowBalanceBotsData]);
 
   useEffect(() => {
@@ -308,7 +311,19 @@ export default function RoomPage() {
   });
 
   const [doubleMode, setDoubleMode] = useState(false);
-  const [lowBalanceBots, setLowBalanceBots] = useState<Array<{ username: string; balance: number; required: number }>>([]);
+  const [lowBalanceBots, setLowBalanceBots] = useState<Array<{ id: string; username: string; balance: number; required: number }>>([]);
+  const [botAlertDismissed, setBotAlertDismissed] = useState(false);
+  const [botTopUpAmounts, setBotTopUpAmounts] = useState<Record<string, string>>({});
+
+  const botTopUpMutation = useMutation({
+    mutationFn: ({ id, balance }: { id: string; balance: number }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/balance`, { balance }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/low-balance-bots"] });
+      toast({ title: "积分已充值" });
+    },
+    onError: (e: Error) => toast({ title: "充值失败", description: e.message, variant: "destructive" }),
+  });
 
   const closeRoundMutation = useMutation({
     mutationFn: ({ optionPoints: pts, double: dbl }: { optionPoints: Record<string, number>; double: boolean }) =>
@@ -517,31 +532,66 @@ export default function RoomPage() {
     <div className="h-screen flex flex-col bg-background">
       <Header showBack title={room?.name} />
 
-      {isAdmin && lowBalanceBots.length > 0 && (
+      {isAdmin && lowBalanceBots.length > 0 && !botAlertDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-background border-2 border-yellow-500 rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-2xl">⚠️</span>
-              <h3 className="text-base font-bold text-yellow-500">托管账号积分不足</h3>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">⚠️</span>
+                <h3 className="text-sm font-bold text-yellow-500">托管账号积分不足</h3>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">以下托管账号余额不足，无法参与下注。请为其充值后弹窗将自动消失。</p>
-            <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
+            <p className="text-xs text-muted-foreground mb-3">以下托管账号余额不足，无法参与下注。充值后弹窗将自动消失。</p>
+            <div className="space-y-2 mb-3 max-h-64 overflow-y-auto">
               {lowBalanceBots.map((bot) => (
-                <div key={bot.username} className="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
-                  <span className="font-semibold text-sm text-foreground">{bot.username}</span>
-                  <div className="text-right">
-                    <div className="text-xs text-red-400">当前：{bot.balance.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">需要：{bot.required.toLocaleString()}</div>
+                <div key={bot.id} className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-foreground">{bot.username}</span>
+                    <div className="text-right">
+                      <span className="text-xs text-red-400">余额：{bot.balance.toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground ml-2">需要：{bot.required.toLocaleString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="充值金额"
+                      value={botTopUpAmounts[bot.id] ?? ""}
+                      onChange={e => setBotTopUpAmounts(prev => ({ ...prev, [bot.id]: e.target.value }))}
+                      className="flex-1 h-7 text-xs px-2 rounded border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-green-500"
+                    />
+                    <button
+                      disabled={!botTopUpAmounts[bot.id] || isNaN(parseInt(botTopUpAmounts[bot.id])) || botTopUpMutation.isPending}
+                      onClick={() => {
+                        const delta = parseInt(botTopUpAmounts[bot.id] ?? "");
+                        if (!isNaN(delta) && delta > 0) {
+                          botTopUpMutation.mutate({ id: bot.id, balance: bot.balance + delta });
+                          setBotTopUpAmounts(prev => ({ ...prev, [bot.id]: "" }));
+                        }
+                      }}
+                      className="h-7 px-3 text-xs rounded bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-40 transition-colors"
+                    >
+                      上分
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
-            <button
-              className="w-full text-xs text-muted-foreground hover:text-foreground py-1 transition-colors"
-              onClick={() => refetchLowBalanceBots()}
-            >
-              点击刷新检查
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="flex-1 text-xs text-muted-foreground hover:text-foreground py-1.5 border border-border rounded-lg transition-colors"
+                onClick={() => refetchLowBalanceBots()}
+              >
+                刷新检查
+              </button>
+              <button
+                className="flex-1 text-xs text-yellow-500 hover:text-yellow-400 py-1.5 border border-yellow-500/40 rounded-lg transition-colors"
+                onClick={() => setBotAlertDismissed(true)}
+              >
+                忽略
+              </button>
+            </div>
           </div>
         </div>
       )}

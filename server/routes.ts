@@ -1535,7 +1535,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const minRequired = Math.max(50, Math.ceil(botCfg.minAmount / 50) * 50);
     const low = allShills
       .filter(s => s.balance < minRequired)
-      .map(s => ({ username: s.username, balance: s.balance, required: minRequired }));
+      .map(s => ({ id: s.id, username: s.username, balance: s.balance, required: minRequired }));
     res.json(low);
   });
 
