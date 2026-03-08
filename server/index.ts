@@ -83,11 +83,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Disable TOTP for regular users only — admins can keep their TOTP enabled
-  // Also ensure webhook URLs are always set correctly
+  // Ensure webhook URLs are always set correctly
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    await pool.query(`UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE role != 'admin'`);
     await pool.query(`
       INSERT INTO bot_settings (id, enabled, min_amount, max_amount, webhook_url1, webhook_url2, webhook_url3)
       VALUES ('default', false, 100, 500,
