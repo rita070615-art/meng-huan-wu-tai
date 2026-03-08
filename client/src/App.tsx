@@ -177,7 +177,7 @@ function AdminDmPopup() {
 }
 
 function ProtectedRoute({ component: Component, adminOnly }: { component: React.ComponentType; adminOnly?: boolean }) {
-  const { user, isLoading, isAdmin } = useAuth();
+  const { user, isLoading, isAdmin, totpVerified } = useAuth();
 
   if (isLoading) {
     return (
@@ -188,6 +188,7 @@ function ProtectedRoute({ component: Component, adminOnly }: { component: React.
   }
 
   if (!user) return <Redirect to="/auth" />;
+  if (user.totpEnabled && !totpVerified) return <Redirect to="/verify-totp" />;
   if (adminOnly && !isAdmin) return <Redirect to="/" />;
 
   return <Component />;
