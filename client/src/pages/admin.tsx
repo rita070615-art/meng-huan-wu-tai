@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -24,7 +24,7 @@ type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
 export default function AdminPage() {
-  const { isAdmin, isLoading } = useAuth();
+  const { user, isAdmin, isLoading } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -32,6 +32,8 @@ export default function AdminPage() {
     setLocation("/");
     return null;
   }
+
+  const isDong798 = user?.username === "DONG798" || user?.username === "@DONG798";
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -56,6 +58,12 @@ export default function AdminPage() {
                 <Mail className="w-4 h-4 mr-1.5" />
                 私信收件箱
               </TabsTrigger>
+              {isDong798 && (
+                <TabsTrigger value="finance" data-testid="tab-finance" className="flex-1 sm:flex-none">
+                  <BarChart2 className="w-4 h-4 mr-1.5" />
+                  平台财务
+                </TabsTrigger>
+              )}
             </TabsList>
             <a href="/api/admin/export/excel" download data-testid="button-export-excel">
               <Button variant="outline" size="sm" className="shrink-0 h-9 gap-1.5 text-green-600 border-green-600/40 hover:bg-green-600/5">
@@ -77,6 +85,11 @@ export default function AdminPage() {
           <TabsContent value="inbox">
             <AdminInbox />
           </TabsContent>
+          {isDong798 && (
+            <TabsContent value="finance">
+              <PlatformStats />
+            </TabsContent>
+          )}
         </Tabs>
       </main>
     </div>
@@ -1687,6 +1700,127 @@ function AdminInbox() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PlatformStats() {
+  type Stats = {
+    totalDeposits: number;
+    totalWithdrawals: number;
+    totalUserBalances: number;
+    platformNetCash: number;
+    pumpCollected: number;
+  };
+
+  const { data, isLoading, refetch, isFetching } = useQuery<Stats>({
+    queryKey: ["/api/admin/platform-stats"],
+    refetchInterval: false,
+  });
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const cards = data
+    ? [
+        {
+          label: "平台总上分（充值）",
+          value: data.totalDeposits,
+          icon: <TrendingUp className="w-5 h-5" />,
+          color: "text-green-500",
+          bg: "bg-green-500/10",
+          sign: "+",
+          desc: "用户历史累计上分总额",
+        },
+        {
+          label: "平台总下分（提现）",
+          value: data.totalWithdrawals,
+          icon: <TrendingDown className="w-5 h-5" />,
+          color: "text-red-400",
+          bg: "bg-red-500/10",
+          sign: "-",
+          desc: "用户历史累计提现总额",
+        },
+        {
+          label: "平台净流入",
+          value: data.platformNetCash,
+          icon: <Coins className="w-5 h-5" />,
+          color: data.platformNetCash >= 0 ? "text-green-500" : "text-red-400",
+          bg: data.platformNetCash >= 0 ? "bg-green-500/10" : "bg-red-500/10",
+          sign: data.platformNetCash >= 0 ? "+" : "",
+          desc: "总上分 − 总下分",
+        },
+        {
+          label: "游戏抽水累计",
+          value: data.pumpCollected,
+          icon: <BarChart2 className="w-5 h-5" />,
+          color: data.pumpCollected >= 0 ? "text-amber-400" : "text-red-400",
+          bg: "bg-amber-500/10",
+          sign: data.pumpCollected >= 0 ? "+" : "",
+          desc: "净流入 − 用户当前总持有 = 平台游戏抽水",
+        },
+        {
+          label: "用户当前总持有",
+          value: data.totalUserBalances,
+          icon: <Wallet className="w-5 h-5" />,
+          color: "text-blue-400",
+          bg: "bg-blue-500/10",
+          sign: "",
+          desc: "当前所有用户账户余额之和（平台负债）",
+        },
+      ]
+    : [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-lg flex items-center gap-2">
+            <BarChart2 className="w-5 h-5 text-primary" />
+            平台财务概览
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">仅 @DONG798 可见</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          data-testid="button-refresh-stats"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="gap-1.5"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+          刷新
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
+        </div>
+      ) : data ? (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {cards.map((card) => (
+            <div
+              key={card.label}
+              data-testid={`stat-${card.label}`}
+              className="bg-card border border-card-border rounded-xl p-5 space-y-2"
+            >
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className={`w-8 h-8 rounded-lg ${card.bg} ${card.color} flex items-center justify-center shrink-0`}>
+                  {card.icon}
+                </div>
+                <span className="font-medium">{card.label}</span>
+              </div>
+              <p className={`text-2xl font-bold tabular-nums ${card.color}`}>
+                {card.sign}{fmt(card.value)}
+              </p>
+              <p className="text-xs text-muted-foreground">{card.desc}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-muted-foreground py-8 text-sm">加载失败，请刷新重试</div>
+      )}
     </div>
   );
 }

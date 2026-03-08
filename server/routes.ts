@@ -1663,6 +1663,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.send(buf);
   });
 
+  // Platform financial stats — only accessible by @DONG798 / DONG798
+  app.get("/api/admin/platform-stats", requireAdmin, async (req, res) => {
+    const me = await storage.getUserById(req.session.userId!);
+    if (!me || !["DONG798", "@DONG798"].includes(me.username)) {
+      return res.status(403).json({ error: "无权限" });
+    }
+    const users = await storage.getAllUsers();
+    let totalDeposits = 0;
+    let totalWithdrawals = 0;
+    let totalUserBalances = 0;
+    for (const u of users) {
+      totalDeposits += (u as any).totalDeposits ?? 0;
+      totalWithdrawals += (u as any).totalWithdrawals ?? 0;
+      totalUserBalances += u.balance ?? 0;
+    }
+    const platformNetCash = totalDeposits - totalWithdrawals;
+    const pumpCollected = platformNetCash - totalUserBalances;
+    return res.json({
+      totalDeposits,
+      totalWithdrawals,
+      totalUserBalances,
+      platformNetCash,
+      pumpCollected,
+    });
+  });
+
   app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {
     const msgs = await storage.getPrivateMessagesForAdmin(req.params.userId);
     await storage.markReadByAdmin(req.params.userId);
