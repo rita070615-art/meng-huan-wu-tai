@@ -1410,37 +1410,23 @@ function ChatMessage({
   if (isSystem) {
     const lines = msg.content.split("\n");
     const isReport = lines.length >= 5;
-    if (isReport) {
-      // Report-style: no bubble, plain text directly in chat
-      return (
-        <div className="w-full px-3 py-2 my-1">
-          <div className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap font-mono">
-            {lines.map((line, i) => (
-              <span key={i} className="block">
-                {line || "\u00A0"}
-              </span>
-            ))}
-          </div>
-          {isAdmin && onDelete && (
-            <button
-              className="mt-0.5 text-[10px] text-red-400 hover:text-red-500 transition-colors"
-              onClick={() => onDelete(msg.id)}
-            >
-              删除
-            </button>
-          )}
-        </div>
-      );
-    }
     return (
-      <div className="flex justify-center my-1.5 px-4">
-        <div className="text-sm text-center text-muted-foreground w-full max-w-sm py-1">
+      <div className="flex flex-col items-center my-2 px-4">
+        <div className={`text-base font-semibold text-center text-foreground/90 leading-relaxed ${isReport ? "w-full max-w-lg" : "w-full max-w-sm"}`}>
           {lines.map((line, i) => (
-            <span key={i} className="block leading-snug">
+            <span key={i} className="block">
               {line || "\u00A0"}
             </span>
           ))}
         </div>
+        {isAdmin && onDelete && (
+          <button
+            className="mt-0.5 text-[10px] text-red-400 hover:text-red-500 transition-colors"
+            onClick={() => onDelete(msg.id)}
+          >
+            删除
+          </button>
+        )}
       </div>
     );
   }
