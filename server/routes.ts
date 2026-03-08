@@ -43,14 +43,14 @@ function formatWebhookContent(payload: Record<string, unknown>): string {
   if (type === "下庄抽水") {
     const grossProfit = payload.grossProfit as number;
     const exitPumpRate = payload.exitPumpRate as number;
-    const platformProfit = (grossProfit * exitPumpRate / 100).toFixed(2);
+    const exitPumpAmount = payload.exitPumpAmount as number;
     return [
       `💰 **下庄抽水**`,
       `时间：${ts}`,
       `庄家：${payload.player}`,
-      `本局庄家输赢：${fmt(payload.netBankerReturn as number)}`,
+      `庄家总盈利：${fmt(grossProfit)}`,
       `下庄抽水率：${exitPumpRate}%`,
-      `平台盈利：**RMB ${platformProfit}**`,
+      `平台盈利：**RMB ${fmt(exitPumpAmount)}**`,
     ].join("\n");
   }
   if (type === "充值") {
@@ -931,7 +931,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     let bankerNameDisplay = "";
     let bankerOptionDisplay = "";
     let bankerReturn = 0;
-    let exitPumpDeducted = 0;
     if (hasbanker && round.bankerUserId) {
       const banker = await storage.getUser(round.bankerUserId);
       bankerNameDisplay = round.bankerNickname || banker?.nickname || banker?.username || "未知";
@@ -943,27 +942,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Banker gets back: remaining fund (after paying winners) + all losing bets
         const remainingFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
         const grossBankerReturn = remainingFund + totalLosingBets;
-        // Deduct exit pump rate only from profit portion (下庄抽水 on profit only)
-        const exitPumpRate = (round as any).exitPumpRate ?? 0;
-        const grossProfit = grossBankerReturn - (round.bankerMaxBet as number);
-        exitPumpDeducted = grossProfit > 0 ? Math.floor(grossProfit * exitPumpRate / 100) : 0;
-        bankerReturn = Math.max(0, grossBankerReturn - exitPumpDeducted);
+        // Return full grossBankerReturn — exit pump is NOT deducted here.
+        // It will be deducted when the admin explicitly clicks 下庄.
+        bankerReturn = grossBankerReturn;
         if (bankerReturn > 0) {
           await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
-        }
-        // Fire webhook: 下庄抽水 → URL1
-        if (exitPumpDeducted > 0) {
-          storage.getBotSettings().then(cfg => {
-            fireWebhooks([(cfg as any).webhookUrl1], {
-              type: "下庄抽水",
-              timestamp: new Date().toISOString(),
-              player: bankerNameDisplay,
-              grossProfit: Math.max(0, grossBankerReturn - (round.bankerMaxBet as number)),
-              exitPumpRate,
-              exitPumpAmount: exitPumpDeducted,
-              netBankerReturn: bankerReturn,
-            });
-          }).catch(() => {});
         }
       }
     }
@@ -1061,8 +1044,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     broadcast(req.params.id, { type: "MESSAGE", message: summaryMsg });
 
     const exitPumpRateBcast = (round as any).exitPumpRate ?? 0;
-    // Persist banker decision state so admin can navigate away and return without losing context
+    // Persist banker decision state so admin can navigate away and return without losing context.
+    // Accumulate cumulativeGrossProfit across 续庄 rounds; exit pump is deducted only on 下庄.
     if (closed.bankerUserId && closed.bankerOption) {
+      const existingRoom = await storage.getRoom(req.params.id);
+      const prevPending = (existingRoom as any)?.pendingBanker;
+      const prevCumulative = (prevPending?.userId === closed.bankerUserId && typeof prevPending?.cumulativeGrossProfit === "number")
+        ? prevPending.cumulativeGrossProfit
+        : 0;
+      const thisRoundGrossProfit = bankerReturn - ((round.bankerMaxBet as number) ?? 0);
+      const cumulativeGrossProfit = prevCumulative + thisRoundGrossProfit;
       await storage.setPendingBanker(req.params.id, {
         userId: closed.bankerUserId,
         nickname: (closed as any).bankerNickname || closed.bankerUserId,
@@ -1071,6 +1062,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         pumpRate,
         playerPumpRate,
         exitPumpRate: exitPumpRateBcast,
+        cumulativeGrossProfit,
       });
     }
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate, exitPumpRate: exitPumpRateBcast });
@@ -1113,8 +1105,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(closed);
   });
 
-  // Admin explicitly dismisses the banker (下庄) — clears pending state without starting a new round
+  // Admin explicitly dismisses the banker (下庄) — deducts exit pump based on accumulated profit
   app.delete("/api/rooms/:id/pending-banker", requireAdmin, async (req, res) => {
+    const room = await storage.getRoom(req.params.id);
+    const pb = (room as any)?.pendingBanker;
+    if (pb?.userId && typeof pb.cumulativeGrossProfit === "number" && pb.cumulativeGrossProfit > 0) {
+      const exitPumpRate: number = pb.exitPumpRate ?? 0;
+      const exitPumpDeducted = exitPumpRate > 0 ? Math.floor(pb.cumulativeGrossProfit * exitPumpRate / 100) : 0;
+      if (exitPumpDeducted > 0) {
+        const banker = await storage.getUser(pb.userId);
+        if (banker) {
+          const deduction = Math.min(exitPumpDeducted, banker.balance);
+          await storage.updateUserBalance(pb.userId, banker.balance - deduction);
+          // Fire 下庄抽水 webhook
+          storage.getBotSettings().then(cfg => {
+            fireWebhooks([(cfg as any).webhookUrl1], {
+              type: "下庄抽水",
+              timestamp: new Date().toISOString(),
+              player: pb.nickname || pb.userId,
+              grossProfit: pb.cumulativeGrossProfit,
+              exitPumpRate,
+              exitPumpAmount: deduction,
+              netBankerReturn: pb.cumulativeGrossProfit - deduction,
+            });
+          }).catch(() => {});
+        }
+      }
+    }
     await storage.setPendingBanker(req.params.id, null);
     broadcast(req.params.id, { type: "PENDING_BANKER_CLEARED" });
     res.json({ ok: true });
