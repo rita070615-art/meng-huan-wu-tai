@@ -4,6 +4,8 @@ import { WebSocketServer, WebSocket } from "ws";
 import session from "express-session";
 import { storage } from "./storage";
 import { z } from "zod";
+import speakeasy from "speakeasy";
+import QRCode from "qrcode";
 import * as XLSX from "xlsx";
 import multer from "multer";
 import path from "path";
@@ -93,6 +95,7 @@ declare module "express-session" {
     nickname: string;
     role: string;
     verifiedRooms: string[];
+    totpVerified: boolean;
     contactAdminCount: number;
   }
 }
@@ -174,6 +177,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   const requireAuth = (req: Request, res: Response, next: Function) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.session.totpVerified) return res.status(403).json({ error: "TOTP_REQUIRED" });
     next();
   };
 
@@ -196,6 +200,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const requireAdmin = (req: Request, res: Response, next: Function) => {
     if (!req.session.userId) return res.status(401).json({ error: "Unauthorized" });
     if (req.session.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+    if (!req.session.totpVerified) return res.status(403).json({ error: "TOTP_REQUIRED" });
     next();
   };
 
@@ -220,9 +225,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
+    req.session.totpVerified = true;
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "注册失败，请重试" });
-      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: false, totpVerified: true });
     });
   });
 
@@ -246,9 +252,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     req.session.username = user.username;
     req.session.nickname = user.nickname || user.username;
     req.session.role = user.role;
+    req.session.totpVerified = !user.totpEnabled;
     req.session.save((err) => {
       if (err) return res.status(500).json({ error: "登录失败，请重试" });
-      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+      res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: user.totpEnabled, totpVerified: req.session.totpVerified });
     });
   });
 
@@ -260,7 +267,75 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!req.session.userId) return res.json(null);
     const user = await storage.getUser(req.session.userId);
     if (!user) return res.json(null);
-    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role });
+    res.json({ id: user.id, username: user.username, nickname: user.nickname, balance: user.balance, role: user.role, totpEnabled: user.totpEnabled, totpVerified: req.session.totpVerified ?? false });
+  });
+
+  // Forgot password via TOTP
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const schema = z.object({
+      username: z.string().min(1),
+      totpCode: z.string().length(6),
+      newPassword: z.string().min(4),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+    const user = await storage.getUserByUsername(parsed.data.username);
+    if (!user) return res.status(404).json({ error: "用户名不存在" });
+    if (!user.totpEnabled || !user.totpSecret) {
+      return res.status(400).json({ error: "该账号未绑定双重认证，无法通过此方式重置密码" });
+    }
+    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: "base32", token: parsed.data.totpCode, window: 1 });
+    if (!isValid) return res.status(400).json({ error: "验证码错误，请重试" });
+    await storage.updateUserPassword(user.id, parsed.data.newPassword);
+    res.json({ ok: true });
+  });
+
+  // TOTP setup — get QR code + secret
+  app.get("/api/auth/totp/setup", requireSession, async (req, res) => {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "用户不存在" });
+    if (user.totpEnabled) return res.status(400).json({ error: "TOTP已经绑定" });
+    const secretObj = speakeasy.generateSecret({ length: 20, name: `梦幻舞台:${user.username}`, issuer: "梦幻舞台" });
+    const secret = secretObj.base32;
+    const otpauth = speakeasy.otpauthURL({ secret, label: encodeURIComponent(user.username), issuer: "梦幻舞台", encoding: "base32" });
+    const qrDataUrl = await QRCode.toDataURL(otpauth);
+    res.json({ secret, qrDataUrl });
+  });
+
+  // TOTP enable — verify code and save secret
+  app.post("/api/auth/totp/enable", requireSession, async (req, res) => {
+    const schema = z.object({ secret: z.string(), code: z.string().length(6) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "参数错误" });
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(404).json({ error: "用户不存在" });
+    if (user.totpEnabled) return res.status(400).json({ error: "TOTP已经绑定" });
+    const isValid = speakeasy.totp.verify({ secret: parsed.data.secret, encoding: "base32", token: parsed.data.code, window: 1 });
+    if (!isValid) return res.status(400).json({ error: "验证码错误，请重试" });
+    await storage.enableTotp(user.id, parsed.data.secret);
+    req.session.totpVerified = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "绑定失败，请重试" });
+      res.json({ ok: true });
+    });
+  });
+
+  // TOTP verify — called after login when TOTP is enabled
+  app.post("/api/auth/totp/verify", requireSession, async (req, res) => {
+    const schema = z.object({ code: z.string().length(6) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "验证码格式错误" });
+    const user = await storage.getUser(req.session.userId!);
+    if (!user || !user.totpSecret || !user.totpEnabled) {
+      return res.status(400).json({ error: "未绑定TOTP" });
+    }
+    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: "base32", token: parsed.data.code, window: 1 });
+    if (!isValid) return res.status(400).json({ error: "验证码错误，请重试" });
+    req.session.totpVerified = true;
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "验证失败，请重试" });
+      res.json({ ok: true });
+    });
   });
 
   app.post("/api/user/change-password", requireSession, async (req, res) => {

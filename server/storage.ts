@@ -363,6 +363,11 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async enableTotp(id: string, secret: string): Promise<User | undefined> {
+    const result = await db.update(users).set({ totpSecret: secret, totpEnabled: true }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
   async adminAdjustBalance(id: string, newBalance: number): Promise<User | undefined> {
     const current = await this.getUser(id);
     if (!current) return undefined;

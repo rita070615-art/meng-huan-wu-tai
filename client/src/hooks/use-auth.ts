@@ -6,6 +6,8 @@ export type AuthUser = {
   nickname: string | null;
   balance: number;
   role: string;
+  totpEnabled: boolean;
+  totpVerified: boolean;
 };
 
 export function useAuth() {
@@ -18,5 +20,7 @@ export function useAuth() {
     isLoading,
     isAdmin: user?.role === "admin",
     isAuthenticated: !!user,
+    totpEnabled: user?.totpEnabled ?? false,
+    totpVerified: user?.totpVerified ?? false,
   };
 }

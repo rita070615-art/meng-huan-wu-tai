@@ -15,6 +15,8 @@ export const users = pgTable("users", {
   isShill: boolean("is_shill").notNull().default(false),
   shillRoomId: varchar("shill_room_id", { length: 36 }),
   registrationIp: text("registration_ip").default(""),
+  totpSecret: text("totp_secret"),
+  totpEnabled: boolean("totp_enabled").notNull().default(false),
   totalDeposits: integer("total_deposits").notNull().default(0),
   totalWithdrawals: integer("total_withdrawals").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),

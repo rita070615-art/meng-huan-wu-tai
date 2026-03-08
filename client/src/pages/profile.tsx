@@ -7,8 +7,9 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Lock, CheckCircle2, Coins, User } from "lucide-react";
+import { Lock, CheckCircle2, Coins, User, Shield, ShieldCheck, ShieldOff } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Link } from "wouter";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -72,6 +73,38 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="bg-card border border-card-border rounded-xl p-5 space-y-3">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            双重身份验证（2FA）
+          </h2>
+          {user.totpEnabled ? (
+            <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
+              <ShieldCheck className="w-5 h-5 text-green-500 shrink-0" />
+              <div>
+                <p className="font-medium text-sm text-green-500" data-testid="status-totp-enabled">双重验证已启用</p>
+                <p className="text-xs text-muted-foreground mt-0.5">您的账号受到双重身份验证保护，登录时需输入动态验证码</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 bg-amber-500/8 border border-amber-500/20 rounded-lg px-4 py-3">
+                <ShieldOff className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <p className="font-medium text-sm text-amber-400" data-testid="status-totp-disabled">尚未开启双重验证</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">建议开启以保护账号及积分安全</p>
+                </div>
+              </div>
+              <Link href="/setup-totp">
+                <Button variant="outline" size="sm" className="w-full" data-testid="button-setup-totp">
+                  <Shield className="w-4 h-4 mr-2" />
+                  立即开启双重验证
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
 
         <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
