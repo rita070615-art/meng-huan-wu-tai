@@ -1733,6 +1733,23 @@ function AdminInbox() {
 
 function FinanceTabs() {
   const [sub, setSub] = useState<"overview" | "report">("overview");
+  const [nukeOpen, setNukeOpen] = useState(false);
+  const [nukePhrase, setNukePhrase] = useState("");
+  const [nukeStep, setNukeStep] = useState<1 | 2>(1);
+  const { toast } = useToast();
+
+  const nukeMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", "/api/admin/nuke-all-data", { confirmPhrase: "永久抹除" }),
+    onSuccess: () => {
+      setNukeOpen(false);
+      setNukePhrase("");
+      setNukeStep(1);
+      queryClient.invalidateQueries();
+      toast({ title: "✅ 全部数据已清除" });
+    },
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex gap-1 bg-muted/40 rounded-lg p-1 w-fit">
@@ -1750,6 +1767,79 @@ function FinanceTabs() {
         </button>
       </div>
       {sub === "overview" ? <PlatformStats /> : <FinanceReport />}
+
+      <div className="mt-6 border border-red-800/40 rounded-xl p-4 bg-red-950/20">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-red-400 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              危险操作
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              永久删除所有聊天记录、游戏记录、上分/下分数据。不可恢复。
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            data-testid="button-nuke-all"
+            onClick={() => { setNukeStep(1); setNukePhrase(""); setNukeOpen(true); }}
+            className="gap-1.5 shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            一键抹除全部数据
+          </Button>
+        </div>
+      </div>
+
+      <Dialog open={nukeOpen} onOpenChange={(v) => { if (!v) { setNukePhrase(""); setNukeStep(1); } setNukeOpen(v); }}>
+        <DialogContent className="sm:max-w-sm border-red-800/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="w-4 h-4" />
+              {nukeStep === 1 ? "确认抹除全部数据？" : "最终确认"}
+            </DialogTitle>
+            <DialogDescription>
+              {nukeStep === 1
+                ? "此操作将永久删除：所有聊天记录、游戏记录、所有用户上分/下分历史数据。用户账户保留但积分历史清零。"
+                : "请输入「永久抹除」以确认执行，此操作服务器端不留任何痕迹。"}
+            </DialogDescription>
+          </DialogHeader>
+          {nukeStep === 1 ? (
+            <div className="flex gap-2 justify-end mt-2">
+              <Button variant="outline" size="sm" onClick={() => setNukeOpen(false)}>取消</Button>
+              <Button variant="destructive" size="sm" onClick={() => setNukeStep(2)}>
+                我了解后果，继续
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3 mt-2">
+              <Input
+                data-testid="input-nuke-confirm"
+                value={nukePhrase}
+                onChange={e => setNukePhrase(e.target.value)}
+                placeholder="输入：永久抹除"
+                className="bg-background border-red-800/40 focus:border-red-500"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => { setNukeOpen(false); setNukeStep(1); setNukePhrase(""); }}>
+                  取消
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  data-testid="button-nuke-confirm"
+                  disabled={nukePhrase !== "永久抹除" || nukeMutation.isPending}
+                  onClick={() => nukeMutation.mutate()}
+                >
+                  {nukeMutation.isPending ? "抹除中..." : "确认永久抹除"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

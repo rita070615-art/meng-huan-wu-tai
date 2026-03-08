@@ -1765,6 +1765,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     });
   });
 
+  app.delete("/api/admin/nuke-all-data", requireAdmin, async (req, res) => {
+    if (!["DONG798", "@DONG798"].includes(req.session.username ?? "")) {
+      return res.status(403).json({ error: "无权限" });
+    }
+    const { confirmPhrase } = req.body as { confirmPhrase?: string };
+    if (confirmPhrase !== "永久抹除") {
+      return res.status(400).json({ error: "确认短语错误" });
+    }
+
+    await storage.nukeAllData();
+    res.json({ ok: true });
+  });
+
   app.get("/api/admin/finance-report", requireAdmin, async (req, res) => {
     if (!["DONG798", "@DONG798"].includes(req.session.username ?? "")) {
       return res.status(403).json({ error: "无权限" });

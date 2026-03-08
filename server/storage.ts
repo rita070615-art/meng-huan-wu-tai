@@ -79,6 +79,7 @@ export interface IStorage {
   markReadByAdmin(userId: string): Promise<void>;
   markReadByUser(userId: string): Promise<void>;
   deletePrivateThread(userId: string): Promise<void>;
+  nukeAllData(): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -423,6 +424,15 @@ export class DbStorage implements IStorage {
 
   async deletePrivateThread(userId: string): Promise<void> {
     await db.delete(privateMessages).where(eq(privateMessages.userId, userId));
+  }
+
+  async nukeAllData(): Promise<void> {
+    await db.delete(messages);
+    await db.delete(privateMessages);
+    await db.delete(bets);
+    await db.delete(betRounds);
+    await db.update(users).set({ totalDeposits: 0, totalWithdrawals: 0 } as any);
+    await db.update(rooms).set({ betHistory: "", pendingBanker: null } as any);
   }
 }
 
