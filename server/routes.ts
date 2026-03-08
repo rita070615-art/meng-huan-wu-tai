@@ -1027,29 +1027,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     await storage.appendBetHistory(req.params.id, historyEntry);
 
-    // Build balance board section (inline in the big summary message)
-    const balanceSectionLines: string[] = [];
-    try {
-      const roomIdSnap = req.params.id;
-      const nowTs = Date.now();
-      const connectedIds = new Set<string>();
-      wsClients.forEach((c) => {
-        if (c.roomId === roomIdSnap && c.ws.readyState === WebSocket.OPEN && nowTs - c.lastActivity < 45000) {
-          connectedIds.add(c.userId);
-        }
-      });
-      const allUsers = await storage.getAllUsers();
-      const shillsHere = allUsers.filter(u => u.isShill && (!(u as any).shillRoomId || (u as any).shillRoomId === roomIdSnap));
-      shillsHere.forEach(u => connectedIds.add(u.id));
-      for (const uid of connectedIds) {
-        const u = await storage.getUser(uid);
-        if (!u) continue;
-        balanceSectionLines.push(`${u.nickname || u.username}：${u.balance.toLocaleString()}`);
-      }
-    } catch (e) {
-      console.error("Balance snapshot error:", e);
-    }
-
     // Consolidated report message
     const reportLines: string[] = [];
     reportLines.push(`⏰ ${timeStr}`);
@@ -1089,11 +1066,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (compactEntries.length === 0) reportLines.push("📜 历史出餐记录");
         legacyEntries.slice(-5).forEach(h => reportLines.push(h));
       }
-    }
-    if (balanceSectionLines.length > 0) {
-      reportLines.push("");
-      reportLines.push("🔒 当前积分榜（在场玩家）");
-      reportLines.push(...balanceSectionLines);
     }
     const reportContent = reportLines.join("\n");
 
