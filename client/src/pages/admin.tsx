@@ -2057,6 +2057,7 @@ function PlatformStats() {
     totalDeposits: number;
     totalWithdrawals: number;
     totalUserBalances: number;
+    shillTotalBalances: number;
     platformNetCash: number;
     pumpCollected: number;
     periodPump: number;
@@ -2138,7 +2139,16 @@ function PlatformStats() {
           color: "text-blue-400",
           bg: "bg-blue-500/10",
           sign: "",
-          desc: "当前所有用户账户余额之和（平台负债）",
+          desc: "当前所有真实用户余额之和（平台负债）",
+        },
+        {
+          label: "托管当前总持有",
+          value: data.shillTotalBalances,
+          icon: <Bot className="w-5 h-5" />,
+          color: "text-purple-400",
+          bg: "bg-purple-500/10",
+          sign: "",
+          desc: "当前所有托管账号余额之和",
         },
       ]
     : [];

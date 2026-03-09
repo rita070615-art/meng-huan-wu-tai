@@ -1766,7 +1766,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     let totalDeposits = 0;
     let totalWithdrawals = 0;
     let totalUserBalances = 0;
+    let shillTotalBalances = 0;
     for (const u of users) {
+      if ((u as any).isShill) {
+        shillTotalBalances += u.balance ?? 0;
+        continue;
+      }
       totalDeposits += (u as any).totalDeposits ?? 0;
       totalWithdrawals += (u as any).totalWithdrawals ?? 0;
       totalUserBalances += u.balance ?? 0;
@@ -1796,6 +1801,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       totalDeposits,
       totalWithdrawals,
       totalUserBalances,
+      shillTotalBalances,
       platformNetCash,
       pumpCollected,
       periodPump,
