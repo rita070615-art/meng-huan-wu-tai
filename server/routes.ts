@@ -1080,7 +1080,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     // Lightweight close notification (used for BET_ROUND_CLOSED broadcast)
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: `✅ 本轮厨房已完成出餐。`,
+      content: `本轮厨房已完成出餐。`,
       type: "system",
     });
 

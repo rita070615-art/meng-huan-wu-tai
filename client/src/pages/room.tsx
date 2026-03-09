@@ -1571,8 +1571,10 @@ function ChatMessage({
     const isSectionHeader = (line: string) =>
       line.includes("本局出餐") || line.includes("本局餐费") || line.startsWith("📜");
     const isWinLine = (line: string) => /^🏆/.test(line);
-    const isCompleteLine = (line: string) => /^✅/.test(line);
+    const isCompleteLine = (line: string) => line.includes("本轮厨房已完成出餐") || /^✅/.test(line);
     const isBudgetLine = (line: string) => /^💰/.test(line);
+    const isChefLine = (line: string) => line.includes("当前厨师");
+    const isAttrHeaderLine = (line: string) => line.includes("本轮可点属性");
     const isCancelLine = (line: string) => line.includes("取消") && line.includes("退还");
     const isTimestampLine = (line: string) => /^📅/.test(line);
 
@@ -1612,14 +1614,28 @@ function ChatMessage({
       }
       if (isCompleteLine(line)) {
         return (
-          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-sm font-semibold text-green-400 mt-1">
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-green-400 mt-1">
             {line}
           </div>
         );
       }
       if (isBudgetLine(line)) {
         return (
-          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-sm text-amber-400 font-medium">
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg text-amber-400 font-bold">
+            {line}
+          </div>
+        );
+      }
+      if (isChefLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-foreground">
+            {line}
+          </div>
+        );
+      }
+      if (isAttrHeaderLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-foreground/80">
             {line}
           </div>
         );
