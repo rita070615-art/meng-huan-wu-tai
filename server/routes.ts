@@ -1182,7 +1182,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     await storage.setPendingBanker(req.params.id, null);
     const msg = await storage.createMessage({
       roomId: req.params.id,
-      content: "本轮点餐已取消，所有积分已退还。",
+      content: "本轮点餐已取消，所有餐费已退还。",
       type: "system",
     });
     broadcast(req.params.id, { type: "BET_ROUND_CANCELLED", round: cancelled, message: msg });

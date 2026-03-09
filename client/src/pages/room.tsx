@@ -360,7 +360,7 @@ export default function RoomPage() {
       setOptionPoints({});
       setDoubleMode(false);
       setCancelRoundConfirm(false);
-      toast({ title: "点餐已取消，积分已退还" });
+      toast({ title: "点餐已取消，餐费已退还" });
     },
     onError: (e: Error) => { setCancelRoundConfirm(false); toast({ title: "取消失败", description: e.message, variant: "destructive" }); },
   });
@@ -1555,6 +1555,7 @@ function ChatMessage({
     const isWinLine = (line: string) => /^🏆/.test(line);
     const isCompleteLine = (line: string) => /^✅/.test(line);
     const isBudgetLine = (line: string) => /^💰/.test(line);
+    const isCancelLine = (line: string) => line.includes("取消") && line.includes("退还");
     const isTimestampLine = (line: string) => /^📅/.test(line);
 
     const renderLine = (line: string, i: number) => {
@@ -1601,6 +1602,13 @@ function ChatMessage({
       if (isBudgetLine(line)) {
         return (
           <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-sm text-amber-400 font-medium">
+            {line}
+          </div>
+        );
+      }
+      if (isCancelLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-red-500">
             {line}
           </div>
         );
