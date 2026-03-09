@@ -2516,7 +2516,7 @@ function SessionWinLoss() {
             variant="outline"
             className="h-8 text-xs"
             data-testid="button-session-today"
-            onClick={() => { setFrom(today); setTo(today); setAppliedFrom(today); setAppliedTo(today); }}
+            onClick={() => { setFrom(today); setTo(""); setAppliedFrom(today); setAppliedTo(""); }}
           >
             今天
           </Button>
