@@ -1917,7 +1917,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Balance logs — visible to all admins
   app.get("/api/admin/balance-logs", requireAdmin, async (req, res) => {
-    const logs = await storage.getBalanceLogs(1000);
+    const fromDate = req.query.from ? new Date(String(req.query.from)) : null;
+    const toDate   = req.query.to   ? new Date(String(req.query.to) + "T23:59:59") : null;
+    let logs = await storage.getBalanceLogs(1000);
+    if (fromDate) logs = logs.filter(l => new Date(l.createdAt) >= fromDate);
+    if (toDate)   logs = logs.filter(l => new Date(l.createdAt) <= toDate);
     res.json(logs);
   });
 
