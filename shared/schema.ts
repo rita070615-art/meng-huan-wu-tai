@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, index, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -87,6 +87,15 @@ export const messages = pgTable("messages", {
   type: text("type").notNull().default("user"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const roomSessions = pgTable("room_sessions", {
+  id: serial("id").primaryKey(),
+  roomId: varchar("room_id", { length: 36 }).notNull(),
+  roomName: text("room_name").notNull().default(""),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+  closedAt: timestamp("closed_at"),
+});
+export type RoomSession = typeof roomSessions.$inferSelect;
 
 export const balanceLogs = pgTable("balance_logs", {
   id: varchar("id", { length: 36 }).primaryKey(),

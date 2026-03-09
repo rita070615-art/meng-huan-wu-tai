@@ -3,8 +3,8 @@ import { Pool } from "pg";
 import { eq, desc, and, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
-  users, rooms, betRounds, bets, messages, botSettings, privateMessages, balanceLogs,
-  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings, type PrivateMessage, type BalanceLog,
+  users, rooms, betRounds, bets, messages, botSettings, privateMessages, balanceLogs, roomSessions,
+  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings, type PrivateMessage, type BalanceLog, type RoomSession,
 } from "@shared/schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -84,6 +84,12 @@ export interface IStorage {
   // Balance Logs
   createBalanceLog(data: { targetUserId: string; targetUsername: string; targetNickname?: string | null; adminUsername: string; delta: number; previousBalance: number; newBalance: number }): Promise<BalanceLog>;
   getBalanceLogs(limit?: number): Promise<BalanceLog[]>;
+
+  // Room Sessions
+  createRoomSession(roomId: string, roomName: string): Promise<RoomSession>;
+  closeRoomSession(roomId: string): Promise<void>;
+  getOpenRoomSession(roomId: string): Promise<RoomSession | undefined>;
+  getRoomSessions(limit?: number): Promise<RoomSession[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -447,6 +453,28 @@ export class DbStorage implements IStorage {
 
   async getBalanceLogs(limit = 500): Promise<BalanceLog[]> {
     return db.select().from(balanceLogs).orderBy(desc(balanceLogs.createdAt)).limit(limit);
+  }
+
+  async createRoomSession(roomId: string, roomName: string): Promise<RoomSession> {
+    const rows = await db.insert(roomSessions).values({ roomId, roomName }).returning();
+    return rows[0];
+  }
+
+  async closeRoomSession(roomId: string): Promise<void> {
+    await db.update(roomSessions)
+      .set({ closedAt: new Date() })
+      .where(and(eq(roomSessions.roomId, roomId), eq(roomSessions.closedAt, null as any)));
+  }
+
+  async getOpenRoomSession(roomId: string): Promise<RoomSession | undefined> {
+    const rows = await db.select().from(roomSessions)
+      .where(and(eq(roomSessions.roomId, roomId), eq(roomSessions.closedAt, null as any)))
+      .limit(1);
+    return rows[0];
+  }
+
+  async getRoomSessions(limit = 200): Promise<RoomSession[]> {
+    return db.select().from(roomSessions).orderBy(desc(roomSessions.openedAt)).limit(limit);
   }
 }
 

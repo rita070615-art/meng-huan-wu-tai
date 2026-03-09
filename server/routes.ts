@@ -563,6 +563,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
     const room = await storage.updateRoom(req.params.id, { isLocked: parsed.data.isLocked });
     if (!room) return res.status(404).json({ error: "房间不存在" });
+    if (parsed.data.isLocked) {
+      // 封盘 → close the open session
+      await storage.closeRoomSession(req.params.id);
+    } else {
+      // 开盘 → start a new session
+      await storage.createRoomSession(req.params.id, room.name);
+    }
     broadcast(req.params.id, { type: "ROOM_LOCKED", isLocked: parsed.data.isLocked });
     res.json({ id: room.id, isLocked: room.isLocked });
   });
@@ -1928,6 +1935,48 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const result = [...statMap.values()].sort((a, b) => (b.winAmount - b.lossAmount) - (a.winAmount - a.lossAmount));
+    res.json(result);
+  });
+
+  // Session win/loss — per open/close cycle
+  app.get("/api/admin/session-winloss", requireAdmin, async (req, res) => {
+    const sessions = await storage.getRoomSessions(200);
+    const allRounds = await storage.getAllBetRoundsWithBets();
+
+    const result = sessions.map(sess => {
+      const sessOpen  = new Date(sess.openedAt).getTime();
+      const sessClose = sess.closedAt ? new Date(sess.closedAt).getTime() : Date.now();
+
+      const rounds = allRounds.filter(r => {
+        if (r.status !== "closed" || !r.winnerOption) return false;
+        const t = r.closedAt ? new Date(r.closedAt).getTime() : new Date(r.createdAt).getTime();
+        return t >= sessOpen && t <= sessClose;
+      });
+
+      const statMap = new Map<string, { userId: string; username: string; nickname: string | null; winAmount: number; lossAmount: number }>();
+      for (const round of rounds) {
+        for (const bet of round.bets) {
+          if (bet.userId === round.bankerUserId) continue;
+          if (!statMap.has(bet.userId)) {
+            statMap.set(bet.userId, { userId: bet.userId, username: bet.username, nickname: bet.nickname ?? null, winAmount: 0, lossAmount: 0 });
+          }
+          const s = statMap.get(bet.userId)!;
+          if (bet.option === round.winnerOption) s.winAmount += bet.amount;
+          else s.lossAmount += bet.amount;
+        }
+      }
+
+      return {
+        id: sess.id,
+        roomId: sess.roomId,
+        roomName: sess.roomName,
+        openedAt: sess.openedAt,
+        closedAt: sess.closedAt,
+        roundCount: rounds.length,
+        customers: [...statMap.values()].sort((a, b) => (b.winAmount - b.lossAmount) - (a.winAmount - a.lossAmount)),
+      };
+    });
+
     res.json(result);
   });
 

@@ -15,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, Edit2, Play, Square, Coins, Users, UserPlus,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
-  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw, FileText, Download
+  Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw, FileText, Download, ChevronDown
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
@@ -62,6 +62,10 @@ export default function AdminPage() {
                 <TrendingUp className="w-4 h-4 mr-1.5" />
                 客户记录
               </TabsTrigger>
+              <TabsTrigger value="sessions" data-testid="tab-sessions" className="flex-1 sm:flex-none">
+                <BarChart2 className="w-4 h-4 mr-1.5" />
+                场次报表
+              </TabsTrigger>
               <TabsTrigger value="balancelogs" data-testid="tab-balancelogs" className="flex-1 sm:flex-none">
                 <FileText className="w-4 h-4 mr-1.5" />
                 分日志
@@ -90,6 +94,9 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="winloss">
             <CustomerWinLoss />
+          </TabsContent>
+          <TabsContent value="sessions">
+            <SessionWinLoss />
           </TabsContent>
           <TabsContent value="balancelogs">
             <BalanceLogsView />
@@ -2421,6 +2428,147 @@ function CustomerWinLoss() {
               </tbody>
             </table>
             <p className="text-xs text-muted-foreground mt-3 text-right">共 {filtered.length} 位客户</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type SessionCustomer = { userId: string; username: string; nickname: string | null; winAmount: number; lossAmount: number };
+type SessionRecord = { id: number; roomId: string; roomName: string; openedAt: string; closedAt: string | null; roundCount: number; customers: SessionCustomer[] };
+
+function SessionWinLoss() {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const { data, isLoading, isFetching, refetch } = useQuery<SessionRecord[]>({
+    queryKey: ["/api/admin/session-winloss"],
+  });
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const fmtTime = (s: string) => {
+    const d = new Date(s);
+    return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  };
+
+  const sessions = data ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-card-border rounded-lg p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h2 className="font-semibold flex items-center gap-2">
+            <BarChart2 className="w-4 h-4 text-primary" />
+            场次输赢报表
+          </h2>
+          <div className="flex items-center gap-2">
+            <Input
+              data-testid="input-session-search"
+              placeholder="搜索客户昵称..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-8 text-sm w-44"
+            />
+            <Button size="sm" variant="outline" className="h-8" onClick={() => refetch()} disabled={isFetching}>
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+        ) : sessions.length === 0 ? (
+          <div className="text-center text-muted-foreground text-sm py-8 border border-dashed border-border rounded-lg">
+            暂无场次记录。开盘后会自动创建场次。
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {sessions.map((sess, idx) => {
+              const isOpen = !sess.closedAt;
+              const net = sess.customers.reduce((acc, c) => acc + c.winAmount - c.lossAmount, 0);
+              const filteredCustomers = search.trim()
+                ? sess.customers.filter(c => (c.nickname ?? "").toLowerCase().includes(search.toLowerCase()) || c.username.toLowerCase().includes(search.toLowerCase()))
+                : sess.customers;
+              return (
+                <div key={sess.id} data-testid={`session-card-${sess.id}`} className="border border-border rounded-lg overflow-hidden">
+                  <button
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/20 text-left"
+                    onClick={() => setExpandedId(expandedId === sess.id ? null : sess.id)}
+                    data-testid={`button-session-expand-${sess.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-muted-foreground">场次 #{sessions.length - idx}</span>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          {sess.roomName}
+                        </Badge>
+                        {isOpen ? (
+                          <Badge className="text-xs px-1.5 py-0 bg-green-500/20 text-green-400 border-green-500/30">进行中</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs px-1.5 py-0 text-muted-foreground">已结束</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                        <span>开盘: {fmtTime(sess.openedAt)}</span>
+                        {sess.closedAt && <span>封盘: {fmtTime(sess.closedAt)}</span>}
+                        <span>{sess.roundCount} 局</span>
+                        <span>{sess.customers.length} 位客户</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`text-sm font-bold tabular-nums ${net >= 0 ? "text-green-400" : "text-red-400"}`}>
+                        {net >= 0 ? "+" : ""}{fmt(net)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">净盈亏</div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expandedId === sess.id ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {expandedId === sess.id && (
+                    <div className="border-t border-border bg-muted/10 px-4 py-3">
+                      {filteredCustomers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">
+                          {search.trim() ? "没有匹配的客户" : "本场次暂无下注记录"}
+                        </p>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border/40 text-muted-foreground text-xs">
+                              <th className="text-left pb-1.5 pr-4">#</th>
+                              <th className="text-left pb-1.5 pr-4">客户</th>
+                              <th className="text-right pb-1.5 pr-4 text-green-400">赢金额</th>
+                              <th className="text-right pb-1.5 pr-4 text-red-400">输金额</th>
+                              <th className="text-right pb-1.5">净盈亏</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredCustomers.map((c, i) => {
+                              const cnet = c.winAmount - c.lossAmount;
+                              return (
+                                <tr key={c.userId} className="border-b border-border/20 last:border-0">
+                                  <td className="py-1.5 pr-4 text-muted-foreground text-xs">{i + 1}</td>
+                                  <td className="py-1.5 pr-4">
+                                    <span className="font-medium text-xs">{c.nickname || c.username}</span>
+                                    {c.nickname && <span className="text-xs text-muted-foreground ml-1">@{c.username}</span>}
+                                  </td>
+                                  <td className="py-1.5 pr-4 text-right tabular-nums text-green-400 text-xs">{fmt(c.winAmount)}</td>
+                                  <td className="py-1.5 pr-4 text-right tabular-nums text-red-400 text-xs">{fmt(c.lossAmount)}</td>
+                                  <td className={`py-1.5 text-right tabular-nums text-xs font-bold ${cnet >= 0 ? "text-green-400" : "text-red-400"}`}>
+                                    {cnet >= 0 ? "+" : ""}{fmt(cnet)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted-foreground text-right mt-2">共 {sessions.length} 场次</p>
           </div>
         )}
       </div>
