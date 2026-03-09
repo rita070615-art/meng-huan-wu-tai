@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Plus, Trash2, Edit2, Play, Square, Coins, Users,
+  Plus, Trash2, Edit2, Play, Square, Coins, Users, UserPlus,
   Settings, MessageSquare, ChevronRight, Check, X, Ban, ShieldCheck, ShieldPlus, Bot, ToggleLeft, ToggleRight, Lock, LockOpen,
   Mail, Send, Inbox, ArrowLeft, MicOff, Mic, AlertTriangle, FileDown, BarChart2, TrendingUp, TrendingDown, Wallet, RefreshCw, FileText, Download
 } from "lucide-react";
@@ -657,16 +657,6 @@ function UsersAdmin() {
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
-  const shillMutation = useMutation({
-    mutationFn: ({ id, isShill }: { id: string; isShill: boolean }) =>
-      apiRequest("PATCH", `/api/admin/users/${id}/shill`, { isShill }),
-    onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/bot-settings"] });
-      toast({ title: vars.isShill ? "已设为托" : "已取消托身份" });
-    },
-    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
-  });
 
   const roleMutation = useMutation({
     mutationFn: ({ id, role }: { id: string; role: string }) =>
@@ -972,20 +962,6 @@ function UsersAdmin() {
                       {u.role !== "admin" && (
                         <Button
                           size="sm"
-                          data-testid={`button-shill-${u.id}`}
-                          onClick={() => shillMutation.mutate({ id: u.id, isShill: !u.isShill })}
-                          disabled={shillMutation.isPending}
-                          className={`h-6 px-2 text-xs ${u.isShill
-                            ? "bg-green-500/20 border border-green-500 text-green-400 hover:bg-green-500/30"
-                            : "bg-transparent border border-border text-muted-foreground hover:border-green-500/60 hover:text-green-400"
-                          }`}
-                        >
-                          托管
-                        </Button>
-                      )}
-                      {u.role !== "admin" && (
-                        <Button
-                          size="sm"
                           data-testid={`button-ban-${u.id}`}
                           onClick={() => banMutation.mutate({ id: u.id, banned: !u.banned })}
                           disabled={banMutation.isPending}
@@ -1195,6 +1171,17 @@ function BotAdmin() {
 
   const [editingBalanceId, setEditingBalanceId] = useState<{ id: string; mode: "add" | "sub" } | null>(null);
   const [editingBalanceValue, setEditingBalanceValue] = useState("");
+  const [newShillName, setNewShillName] = useState("");
+
+  const createShillMutation = useMutation({
+    mutationFn: (name: string) => apiRequest("POST", "/api/admin/create-shill", { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setNewShillName("");
+      toast({ title: "托管账号已创建" });
+    },
+    onError: (e: Error) => toast({ title: "创建失败", description: e.message, variant: "destructive" }),
+  });
 
   const balanceMutation = useMutation({
     mutationFn: ({ id, balance }: { id: string; balance: number }) =>
@@ -1327,15 +1314,45 @@ function BotAdmin() {
       </div>
 
       <div className="bg-card border border-card-border rounded-lg p-5">
-        <h2 className="font-semibold mb-4 flex items-center gap-2">
-          <Users className="w-4 h-4" />
-          托账号列表
-          {shills.length > 0 && (
-            <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded ml-1">
-              {shills.length} 个
-            </span>
-          )}
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Users className="w-4 h-4" />
+            托账号列表
+            {shills.length > 0 && (
+              <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-1.5 py-0.5 rounded ml-1">
+                {shills.length} 个
+              </span>
+            )}
+          </h2>
+        </div>
+        <form
+          className="flex items-center gap-2 mb-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = newShillName.trim();
+            if (!name) return;
+            createShillMutation.mutate(name);
+          }}
+        >
+          <Input
+            data-testid="input-new-shill-name"
+            placeholder="输入托管账号名字"
+            value={newShillName}
+            onChange={(e) => setNewShillName(e.target.value)}
+            className="h-9 text-sm flex-1"
+            maxLength={20}
+          />
+          <Button
+            type="submit"
+            size="sm"
+            data-testid="button-create-shill"
+            disabled={createShillMutation.isPending || !newShillName.trim()}
+            className="shrink-0"
+          >
+            <UserPlus className="w-3.5 h-3.5 mr-1" />
+            添加托管账号
+          </Button>
+        </form>
         {usersLoading ? (
           <Skeleton className="h-20 rounded-lg" />
         ) : shills.length > 0 ? (
@@ -1343,10 +1360,10 @@ function BotAdmin() {
             {shills.map((u) => (
               <div key={u.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                 <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-sm font-bold text-purple-400 shrink-0">
-                  {u.username[0].toUpperCase()}
+                  {(u.nickname || u.username)[0].toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm">{u.username}</p>
+                  <p className="font-medium text-sm">{u.nickname || u.username}</p>
                   {/* Room assignment */}
                   <div className="flex items-center gap-1 mt-0.5 mb-1">
                     <select
@@ -1433,8 +1450,8 @@ function BotAdmin() {
         ) : (
           <div className="text-center text-muted-foreground text-sm py-6 border border-dashed border-border rounded-lg">
             <Bot className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            暂无托账号<br />
-            <span className="text-xs">在「用户管理」中点击 <Bot className="w-3 h-3 inline" /> 图标可将用户设为托</span>
+            暂无托管账号<br />
+            <span className="text-xs">在上方输入名字并点击添加</span>
           </div>
         )}
       </div>

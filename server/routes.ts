@@ -1516,6 +1516,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: user!.id, username: user!.username, isShill: user!.isShill });
   });
 
+  app.post("/api/admin/create-shill", requireAdmin, async (req, res) => {
+    const schema = z.object({ name: z.string().min(1).max(20) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "请输入有效名称" });
+
+    const existingNick = await storage.getUserByNickname(parsed.data.name);
+    if (existingNick) return res.status(400).json({ error: "该名称已被使用" });
+
+    const username = `shill_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
+    const password = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const user = await storage.createUser({ username, password, nickname: parsed.data.name });
+    await storage.setUserShill(user.id, true);
+    const updated = await storage.getUser(user.id);
+    res.json(updated);
+  });
+
   app.patch("/api/admin/users/:id/shill-room", requireAdmin, async (req, res) => {
     const schema = z.object({ shillRoomId: z.string().nullable() });
     const parsed = schema.safeParse(req.body);
