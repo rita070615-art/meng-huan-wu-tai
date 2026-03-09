@@ -1614,6 +1614,7 @@ function ChatMessage({
     const isBudgetLine = (line: string) => /^💰/.test(line);
     const isChefLine = (line: string) => line.includes("当前厨师");
     const isAttrHeaderLine = (line: string) => line.includes("本轮可点属性");
+    const isStartBettingLine = (line: string) => line.trim() === "开始点餐";
     const isCancelLine = (line: string) => line.includes("取消") && line.includes("退还");
     const isTimestampLine = (line: string) => /^📅/.test(line);
 
@@ -1675,6 +1676,13 @@ function ChatMessage({
       if (isAttrHeaderLine(line)) {
         return (
           <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-foreground/80">
+            {line}
+          </div>
+        );
+      }
+      if (isStartBettingLine(line)) {
+        return (
+          <div key={i} style={{ textAlign: isReport ? "left" : "center" }} className="text-lg font-bold text-yellow-400 mt-1">
             {line}
           </div>
         );

@@ -689,6 +689,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       playableOpts,
       ``,
       `💰 本轮厨房预算：${effectiveFundDisplay}`,
+      ``,
+      `开始点餐`,
     ].join("\n");
     const msg = await storage.createMessage({
       roomId: req.params.id,
