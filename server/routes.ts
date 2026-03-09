@@ -639,9 +639,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const carryOver = req.body.carryOver != null ? Math.max(0, Number(req.body.carryOver)) : 0;
+    // newAmount: extra funds banker must pay in (0 if new cap ≤ held escrow amount)
     const newAmount = Math.max(0, Number(bankerMaxBet) - carryOver);
+    // excessReturn: if new cap < held escrow, return the surplus to banker now
+    const excessReturn = Math.max(0, carryOver - Number(bankerMaxBet));
 
-    // Validate banker has enough NEW balance (carryOver is already in their account)
+    // Validate banker has enough balance for any additional new portion
     const banker = await storage.getUser(bankerUserId);
     if (!banker || banker.balance < newAmount) {
       const name = banker?.nickname || banker?.username || "该用户";
@@ -664,9 +667,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       carryOver,
     });
 
-    // Deduct only the NEW portion (not carryOver) from banker's balance
-    if (newAmount > 0) {
-      await storage.updateUserBalance(bankerUserId, banker.balance - newAmount);
+    // Deduct new portion OR return excess escrow (if new cap < held amount)
+    // Net effect on banker balance: -(newAmount) + excessReturn = -(newAmount - excessReturn)
+    const balanceDelta = excessReturn - newAmount; // positive = return to banker, negative = deduct
+    if (balanceDelta !== 0) {
+      await storage.updateUserBalance(bankerUserId, banker.balance + balanceDelta);
     }
 
     // Fire webhook: 上庄抽水 or 续庄抽水 → URL1
@@ -989,12 +994,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Banker gets back: remaining fund (after paying winners) + all losing bets
         const remainingFund = Math.max(0, effectiveBankerFund - totalNetWinsPaid);
         const grossBankerReturn = remainingFund + totalLosingBets;
-        // Return full grossBankerReturn — exit pump is NOT deducted here.
-        // It will be deducted when the admin explicitly clicks 下庄.
+        // Hold the bankerReturn in escrow — do NOT credit banker's balance yet.
+        // Credits are only returned when admin clicks 下庄 (or 续庄 with less cap).
         bankerReturn = grossBankerReturn;
-        if (bankerReturn > 0) {
-          await storage.updateUserBalance(round.bankerUserId, banker.balance + bankerReturn);
-        }
       }
     }
 
@@ -1131,28 +1133,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(closed);
   });
 
-  // Admin explicitly dismisses the banker (下庄) — deducts exit pump based on accumulated profit
+  // Admin explicitly dismisses the banker (下庄) — returns held bankerReturn minus exit pump
   app.delete("/api/rooms/:id/pending-banker", requireAdmin, async (req, res) => {
     const room = await storage.getRoom(req.params.id);
     const pb = (room as any)?.pendingBanker;
-    if (pb?.userId && typeof pb.cumulativeGrossProfit === "number" && pb.cumulativeGrossProfit > 0) {
-      const exitPumpRate: number = pb.exitPumpRate ?? 0;
-      const exitPumpDeducted = exitPumpRate > 0 ? Math.floor(pb.cumulativeGrossProfit * exitPumpRate / 100) : 0;
-      if (exitPumpDeducted > 0) {
-        const banker = await storage.getUser(pb.userId);
-        if (banker) {
-          const deduction = Math.min(exitPumpDeducted, banker.balance);
-          await storage.updateUserBalance(pb.userId, banker.balance - deduction);
-          // Fire 下庄抽水 webhook
+    if (pb?.userId) {
+      const banker = await storage.getUser(pb.userId);
+      if (banker) {
+        const heldAmount: number = pb.bankerReturn ?? 0;
+        const exitPumpRate: number = pb.exitPumpRate ?? 0;
+        const grossProfit: number = typeof pb.cumulativeGrossProfit === "number" ? pb.cumulativeGrossProfit : 0;
+        // Exit pump deducted only from profit portion
+        const exitPumpDeducted = (exitPumpRate > 0 && grossProfit > 0)
+          ? Math.min(Math.floor(grossProfit * exitPumpRate / 100), heldAmount)
+          : 0;
+        const netReturn = heldAmount - exitPumpDeducted;
+        // Credit the banker's balance with their net return
+        if (netReturn > 0) {
+          await storage.updateUserBalance(pb.userId, banker.balance + netReturn);
+        }
+        // Fire 下庄抽水 webhook if exit pump was applied
+        if (exitPumpDeducted > 0) {
           storage.getBotSettings().then(cfg => {
             fireWebhooks([(cfg as any).webhookUrl1], {
               type: "下庄抽水",
               timestamp: new Date().toISOString(),
               player: pb.nickname || pb.userId,
-              grossProfit: pb.cumulativeGrossProfit,
+              grossProfit,
               exitPumpRate,
-              exitPumpAmount: deduction,
-              netBankerReturn: pb.cumulativeGrossProfit - deduction,
+              exitPumpAmount: exitPumpDeducted,
+              netBankerReturn: netReturn,
             });
           }).catch(() => {});
         }
