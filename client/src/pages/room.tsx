@@ -691,6 +691,7 @@ export default function RoomPage() {
               const effectiveDisplayCap = carryAmt + Math.floor(addAmt * (1 - activePumpNum / 100));
               const activePlayerPumpRate = playerPumpRate !== "" ? playerPumpRate : persistedBanker.playerPumpRate;
               const activeExitPumpRate = exitPumpRate !== "" ? exitPumpRate : persistedBanker.exitPumpRate;
+              const effectiveBankerOption = bankerOption || persistedBanker.option;
               return (
                 <div className="px-3 py-3 border-t border-border/50 bg-amber-500/5">
                   {/* Banker info bar */}
@@ -698,9 +699,6 @@ export default function RoomPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-semibold text-amber-400">继续上庄</span>
                       <span className="text-xs font-medium text-foreground">{persistedBanker.nickname}</span>
-                      <span className="text-[11px] px-1.5 py-0.5 rounded font-bold" style={{ color: optColors[persistedBanker.option] || "#fff", background: `${optColors[persistedBanker.option]}22` }}>
-                        {optLabels[persistedBanker.option] || persistedBanker.option}
-                      </span>
                     </div>
                     <button
                       type="button"
@@ -710,6 +708,46 @@ export default function RoomPage() {
                     >
                       下庄
                     </button>
+                  </div>
+
+                  {/* Banker option re-select */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-[10px] text-muted-foreground shrink-0">庄属性</label>
+                    <select
+                      data-testid="select-carry-banker-option"
+                      value={effectiveBankerOption}
+                      onChange={e => setBankerOption(e.target.value)}
+                      className="text-xs bg-background border border-border rounded px-2 py-0.5 text-foreground"
+                    >
+                      {[{key:"B",label:"体力"},{key:"C",label:"法力"},{key:"A",label:"力量"},{key:"D",label:"耐力"}].map(o => (
+                        <option key={o.key} value={o.key}>{o.label}</option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] px-1.5 py-0.5 rounded font-bold" style={{ color: optColors[effectiveBankerOption] || "#fff", background: `${optColors[effectiveBankerOption]}22` }}>
+                      {optLabels[effectiveBankerOption] || effectiveBankerOption}
+                    </span>
+                  </div>
+
+                  {/* Odds */}
+                  <div className="border border-border/40 rounded-md p-2 mb-2 bg-background/40">
+                    <p className="text-[10px] text-muted-foreground mb-1.5">赔率设置 <span className="text-[10px] font-normal">（留空 = 按比例分池）</span></p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[{key:"B",label:"体力",color:"#22c55e"},{key:"C",label:"法力",color:"#a855f7"},{key:"A",label:"力量",color:"#ef4444"},{key:"D",label:"耐力",color:"#3b82f6"}].map(o => (
+                        <div key={o.key}>
+                          <label className="text-[10px] font-medium" style={{ color: o.color }}>{o.label}</label>
+                          <Input
+                            data-testid={`input-carry-ratio-${o.key}`}
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            value={optionRatios[o.key]}
+                            onChange={e => setOptionRatios(r => ({ ...r, [o.key]: e.target.value }))}
+                            placeholder="赔率"
+                            className="h-6 text-xs mt-0.5 px-1.5"
+                          />
+                        </div>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Carry + add to limit */}
@@ -773,7 +811,7 @@ export default function RoomPage() {
                       startRoundMutation.mutate({
                         bankerUserId: persistedBanker.userId,
                         bankerNickname: persistedBanker.nickname,
-                        bankerOption: persistedBanker.option,
+                        bankerOption: effectiveBankerOption,
                         bankerMaxBet: totalCap,
                         carryOver: carryAmt,
                         pumpRate: activePumpRate ? Number(activePumpRate) : undefined,
@@ -782,6 +820,7 @@ export default function RoomPage() {
                         options: defaultOptsNow,
                       });
                       setOptionRatios({ A: "", B: "", C: "", D: "" });
+                      setBankerOption("");
                     }}
                   >
                     <Play className="w-3 h-3 mr-1" />
