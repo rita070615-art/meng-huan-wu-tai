@@ -1801,7 +1801,7 @@ function FinanceTabs() {
             </DialogTitle>
             <DialogDescription>
               {nukeStep === 1
-                ? "此操作将永久删除：所有聊天记录、游戏记录、所有用户上分/下分历史数据。用户账户保留但积分历史清零。"
+                ? "此操作将永久删除：所有聊天记录、游戏记录、所有用户上分/下分历史，并将所有用户余额归零。用户账号保留，余额可事后手动补录。"
                 : "请输入「永久抹除」以确认执行，此操作服务器端不留任何痕迹。"}
             </DialogDescription>
           </DialogHeader>

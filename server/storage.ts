@@ -431,7 +431,7 @@ export class DbStorage implements IStorage {
     await db.delete(privateMessages);
     await db.delete(bets);
     await db.delete(betRounds);
-    await db.update(users).set({ totalDeposits: 0, totalWithdrawals: 0 } as any);
+    await db.update(users).set({ balance: 0, totalDeposits: 0, totalWithdrawals: 0 } as any);
     await db.update(rooms).set({ betHistory: "", pendingBanker: null } as any);
   }
 }
