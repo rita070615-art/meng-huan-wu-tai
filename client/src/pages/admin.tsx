@@ -2137,7 +2137,7 @@ function PlatformStats() {
           color: "text-amber-400",
           bg: "bg-amber-500/10",
           sign: "+",
-          desc: "历史所有场次上庄抽水总和（按出庄率累加）",
+          desc: "历史所有场次上庄抽水 + 下庄抽水总和",
         },
         {
           label: "用户当前总持有",

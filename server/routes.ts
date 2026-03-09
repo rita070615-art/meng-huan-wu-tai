@@ -1152,8 +1152,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (netReturn > 0) {
           await storage.updateUserBalance(pb.userId, banker.balance + netReturn);
         }
-        // Fire 下庄抽水 webhook if exit pump was applied
+        // Record exit pump in balance logs (sentinel adminUsername = "EXIT_PUMP" for stats aggregation)
         if (exitPumpDeducted > 0) {
+          await storage.createBalanceLog({
+            targetUserId: pb.userId,
+            targetUsername: pb.nickname || pb.userId,
+            targetNickname: pb.nickname || null,
+            adminUsername: "EXIT_PUMP",
+            delta: -exitPumpDeducted,
+            previousBalance: banker.balance + netReturn,
+            newBalance: banker.balance + netReturn,
+          });
+          // Fire 下庄抽水 webhook
           storage.getBotSettings().then(cfg => {
             fireWebhooks([(cfg as any).webhookUrl1], {
               type: "下庄抽水",
@@ -1807,9 +1817,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const fromDate  = fromParam ? new Date(fromParam) : null;
     const toDate    = toParam ? new Date(toParam + "T23:59:59.999Z") : null;
 
-    const [users, rounds] = await Promise.all([
+    const [users, rounds, allBalanceLogs] = await Promise.all([
       storage.getAllUsers(),
       storage.getAllBetRoundsWithBets(),
+      storage.getBalanceLogs(10000),
     ]);
 
     let totalDeposits = 0;
@@ -1827,6 +1838,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     const platformNetCash = totalDeposits - totalWithdrawals;
     const pumpCollected   = platformNetCash - totalUserBalances;
+
+    // Sum all exit pump deductions from balance logs
+    const totalExitPumpAllTime = allBalanceLogs
+      .filter(l => l.adminUsername === "EXIT_PUMP" && l.delta < 0)
+      .reduce((s, l) => s + Math.abs(l.delta), 0);
 
     // All-time pump + period pump from game rounds
     let totalPumpAllTime = 0;
@@ -1857,7 +1873,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       shillTotalBalances,
       platformNetCash,
       pumpCollected,
-      totalPumpAllTime,
+      totalPumpAllTime: totalPumpAllTime + totalExitPumpAllTime,
       periodPump,
       periodRounds,
       periodBets,
