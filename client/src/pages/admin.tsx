@@ -2264,7 +2264,7 @@ function PlatformStats() {
   );
 }
 
-type WinLossRecord = { userId: string; username: string; nickname: string | null; rounds: number; wins: number; losses: number; totalBet: number };
+type WinLossRecord = { userId: string; username: string; nickname: string | null; rounds: number; winAmount: number; lossAmount: number };
 
 function CustomerWinLoss() {
   const [search, setSearch] = useState("");
@@ -2306,26 +2306,31 @@ function CustomerWinLoss() {
                 <tr className="border-b border-border">
                   <th className="text-left py-2 pr-4 text-muted-foreground font-medium">#</th>
                   <th className="text-left py-2 pr-4 text-muted-foreground font-medium">昵称</th>
-                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium">参与局数</th>
-                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-green-400">胜</th>
-                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-red-400">负</th>
-                  <th className="text-right py-2 text-muted-foreground font-medium">总下注</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium">局数</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-green-400">赢金额</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-red-400">输金额</th>
+                  <th className="text-right py-2 text-muted-foreground font-medium">净盈亏</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((r, i) => (
+                {filtered.map((r, i) => {
+                  const net = r.winAmount - r.lossAmount;
+                  return (
                   <tr key={r.userId} data-testid={`row-winloss-${r.userId}`} className="border-b border-border/40 hover:bg-muted/20">
                     <td className="py-2.5 pr-4 text-muted-foreground">{i + 1}</td>
                     <td className="py-2.5 pr-4">
                       <span className="font-medium">{r.nickname || r.username}</span>
                       {r.nickname && <span className="text-xs text-muted-foreground ml-1">@{r.username}</span>}
                     </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums">{r.rounds}</td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums text-green-400 font-medium">{r.wins}</td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums text-red-400 font-medium">{r.losses}</td>
-                    <td className="py-2.5 text-right tabular-nums text-amber-400">{fmt(r.totalBet)}</td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums text-muted-foreground">{r.rounds}</td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums text-green-400 font-medium">{fmt(r.winAmount)}</td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums text-red-400 font-medium">{fmt(r.lossAmount)}</td>
+                    <td className={`py-2.5 text-right tabular-nums font-bold ${net >= 0 ? "text-green-400" : "text-red-400"}`}>
+                      {net >= 0 ? "+" : ""}{fmt(net)}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             <p className="text-xs text-muted-foreground mt-3 text-right">共 {filtered.length} 位客户</p>

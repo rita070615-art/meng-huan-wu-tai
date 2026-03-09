@@ -1887,26 +1887,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Customer win/loss records — visible to all admins
   app.get("/api/admin/customer-winloss", requireAdmin, async (req, res) => {
     const rounds = await storage.getAllBetRoundsWithBets();
-    const statMap = new Map<string, { userId: string; username: string; nickname: string | null; rounds: number; wins: number; losses: number; totalBet: number }>();
+    const statMap = new Map<string, { userId: string; username: string; nickname: string | null; rounds: number; winAmount: number; lossAmount: number }>();
 
     for (const round of rounds) {
       if (round.status !== "closed" || !round.winnerOption) continue;
       for (const bet of round.bets) {
         if (!statMap.has(bet.userId)) {
-          statMap.set(bet.userId, { userId: bet.userId, username: bet.username, nickname: bet.nickname ?? null, rounds: 0, wins: 0, losses: 0, totalBet: 0 });
+          statMap.set(bet.userId, { userId: bet.userId, username: bet.username, nickname: bet.nickname ?? null, rounds: 0, winAmount: 0, lossAmount: 0 });
         }
         const s = statMap.get(bet.userId)!;
         s.rounds += 1;
-        s.totalBet += bet.amount;
         if (bet.option === round.winnerOption) {
-          s.wins += 1;
+          s.winAmount += bet.amount;
         } else {
-          s.losses += 1;
+          s.lossAmount += bet.amount;
         }
       }
     }
 
-    const result = [...statMap.values()].sort((a, b) => b.totalBet - a.totalBet);
+    const result = [...statMap.values()].sort((a, b) => (b.winAmount - b.lossAmount) - (a.winAmount - a.lossAmount));
     res.json(result);
   });
 
