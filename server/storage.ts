@@ -3,8 +3,8 @@ import { Pool } from "pg";
 import { eq, desc, and, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
-  users, rooms, betRounds, bets, messages, botSettings, privateMessages,
-  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings, type PrivateMessage,
+  users, rooms, betRounds, bets, messages, botSettings, privateMessages, balanceLogs,
+  type User, type InsertUser, type Room, type BetRound, type Bet, type Message, type BotSettings, type PrivateMessage, type BalanceLog,
 } from "@shared/schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -80,6 +80,10 @@ export interface IStorage {
   markReadByUser(userId: string): Promise<void>;
   deletePrivateThread(userId: string): Promise<void>;
   nukeAllData(): Promise<void>;
+
+  // Balance Logs
+  createBalanceLog(data: { targetUserId: string; targetUsername: string; targetNickname?: string | null; adminUsername: string; delta: number; previousBalance: number; newBalance: number }): Promise<BalanceLog>;
+  getBalanceLogs(limit?: number): Promise<BalanceLog[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -431,8 +435,18 @@ export class DbStorage implements IStorage {
     await db.delete(privateMessages);
     await db.delete(bets);
     await db.delete(betRounds);
+    await db.delete(balanceLogs);
     await db.update(users).set({ balance: 0, totalDeposits: 0, totalWithdrawals: 0 } as any);
     await db.update(rooms).set({ betHistory: "", pendingBanker: null } as any);
+  }
+
+  async createBalanceLog(data: { targetUserId: string; targetUsername: string; targetNickname?: string | null; adminUsername: string; delta: number; previousBalance: number; newBalance: number }): Promise<BalanceLog> {
+    const [row] = await db.insert(balanceLogs).values({ id: randomUUID(), ...data }).returning();
+    return row;
+  }
+
+  async getBalanceLogs(limit = 500): Promise<BalanceLog[]> {
+    return db.select().from(balanceLogs).orderBy(desc(balanceLogs.createdAt)).limit(limit);
   }
 }
 

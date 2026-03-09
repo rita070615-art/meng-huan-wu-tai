@@ -1371,8 +1371,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const user = await storage.adminAdjustBalance(req.params.id, parsed.data.balance);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Fire webhook: 充值 or 提现 (skip for shill/bot accounts)
+    // Log the balance adjustment
     const delta = parsed.data.balance - (before?.balance ?? 0);
+    if (delta !== 0) {
+      const adminName = req.session.nickname || req.session.username || "管理员";
+      storage.createBalanceLog({
+        targetUserId: user.id,
+        targetUsername: user.username,
+        targetNickname: user.nickname ?? null,
+        adminUsername: adminName,
+        delta,
+        previousBalance: before?.balance ?? 0,
+        newBalance: parsed.data.balance,
+      }).catch(() => {});
+    }
+
+    // Fire webhook: 充值 or 提现 (skip for shill/bot accounts)
     if (delta !== 0 && !before?.isShill) {
       const adminName = req.session.nickname || req.session.username || "管理员";
       const playerName = user.nickname || user.username;
@@ -1868,6 +1882,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       .sort((a, b) => (b.date > a.date ? 1 : -1));
 
     res.json({ deposits, withdrawals, roundPumps });
+  });
+
+  // Customer win/loss records — visible to all admins
+  app.get("/api/admin/customer-winloss", requireAdmin, async (req, res) => {
+    const rounds = await storage.getAllBetRoundsWithBets();
+    const statMap = new Map<string, { userId: string; username: string; nickname: string | null; rounds: number; wins: number; losses: number; totalBet: number }>();
+
+    for (const round of rounds) {
+      if (round.status !== "closed" || !round.winnerOption) continue;
+      for (const bet of round.bets) {
+        if (!statMap.has(bet.userId)) {
+          statMap.set(bet.userId, { userId: bet.userId, username: bet.username, nickname: bet.nickname ?? null, rounds: 0, wins: 0, losses: 0, totalBet: 0 });
+        }
+        const s = statMap.get(bet.userId)!;
+        s.rounds += 1;
+        s.totalBet += bet.amount;
+        if (bet.option === round.winnerOption) {
+          s.wins += 1;
+        } else {
+          s.losses += 1;
+        }
+      }
+    }
+
+    const result = [...statMap.values()].sort((a, b) => b.totalBet - a.totalBet);
+    res.json(result);
+  });
+
+  // Balance logs — visible to all admins
+  app.get("/api/admin/balance-logs", requireAdmin, async (req, res) => {
+    const logs = await storage.getBalanceLogs(1000);
+    res.json(logs);
   });
 
   app.get("/api/admin/private-messages/:userId", requireAdmin, async (req, res) => {

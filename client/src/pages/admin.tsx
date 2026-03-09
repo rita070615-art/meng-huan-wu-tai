@@ -58,6 +58,14 @@ export default function AdminPage() {
                 <Mail className="w-4 h-4 mr-1.5" />
                 私信收件箱
               </TabsTrigger>
+              <TabsTrigger value="winloss" data-testid="tab-winloss" className="flex-1 sm:flex-none">
+                <TrendingUp className="w-4 h-4 mr-1.5" />
+                客户记录
+              </TabsTrigger>
+              <TabsTrigger value="balancelogs" data-testid="tab-balancelogs" className="flex-1 sm:flex-none">
+                <FileText className="w-4 h-4 mr-1.5" />
+                分日志
+              </TabsTrigger>
               {isDong798 && (
                 <TabsTrigger value="finance" data-testid="tab-finance" className="flex-1 sm:flex-none">
                   <BarChart2 className="w-4 h-4 mr-1.5" />
@@ -79,6 +87,12 @@ export default function AdminPage() {
           </TabsContent>
           <TabsContent value="inbox">
             <AdminInbox />
+          </TabsContent>
+          <TabsContent value="winloss">
+            <CustomerWinLoss />
+          </TabsContent>
+          <TabsContent value="balancelogs">
+            <BalanceLogsView />
           </TabsContent>
           {isDong798 && (
             <TabsContent value="finance">
@@ -1749,7 +1763,6 @@ function AdminInbox() {
 }
 
 function FinanceTabs() {
-  const [sub, setSub] = useState<"overview" | "report">("overview");
   const [nukeOpen, setNukeOpen] = useState(false);
   const [nukePhrase, setNukePhrase] = useState("");
   const [nukeStep, setNukeStep] = useState<1 | 2>(1);
@@ -1769,21 +1782,7 @@ function FinanceTabs() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 bg-muted/40 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setSub("overview")}
-          className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${sub === "overview" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          概览
-        </button>
-        <button
-          onClick={() => setSub("report")}
-          className={`px-4 py-1.5 text-sm rounded-md font-medium transition-colors ${sub === "report" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          导出报表
-        </button>
-      </div>
-      {sub === "overview" ? <PlatformStats /> : <FinanceReport />}
+      <PlatformStats />
 
       <div className="mt-6 border border-red-800/40 rounded-xl p-4 bg-red-950/20">
         <div className="flex items-center justify-between">
@@ -2261,6 +2260,156 @@ function PlatformStats() {
       ) : (
         <div className="text-center text-muted-foreground py-8 text-sm">加载失败，请刷新重试</div>
       )}
+    </div>
+  );
+}
+
+type WinLossRecord = { userId: string; username: string; nickname: string | null; rounds: number; wins: number; losses: number; totalBet: number };
+
+function CustomerWinLoss() {
+  const [search, setSearch] = useState("");
+  const { data, isLoading } = useQuery<WinLossRecord[]>({ queryKey: ["/api/admin/customer-winloss"] });
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const filtered = (data ?? []).filter(r => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (r.nickname ?? "").toLowerCase().includes(q) || r.username.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-card-border rounded-lg p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h2 className="font-semibold flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-green-400" />
+            客户输赢记录
+          </h2>
+          <Input
+            data-testid="input-winloss-search"
+            placeholder="搜索昵称或用户名..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-sm w-52"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center text-muted-foreground text-sm py-8 border border-dashed border-border rounded-lg">暂无记录</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 pr-4 text-muted-foreground font-medium">#</th>
+                  <th className="text-left py-2 pr-4 text-muted-foreground font-medium">昵称</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium">参与局数</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-green-400">胜</th>
+                  <th className="text-right py-2 pr-4 text-muted-foreground font-medium text-red-400">负</th>
+                  <th className="text-right py-2 text-muted-foreground font-medium">总下注</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r, i) => (
+                  <tr key={r.userId} data-testid={`row-winloss-${r.userId}`} className="border-b border-border/40 hover:bg-muted/20">
+                    <td className="py-2.5 pr-4 text-muted-foreground">{i + 1}</td>
+                    <td className="py-2.5 pr-4">
+                      <span className="font-medium">{r.nickname || r.username}</span>
+                      {r.nickname && <span className="text-xs text-muted-foreground ml-1">@{r.username}</span>}
+                    </td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums">{r.rounds}</td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums text-green-400 font-medium">{r.wins}</td>
+                    <td className="py-2.5 pr-4 text-right tabular-nums text-red-400 font-medium">{r.losses}</td>
+                    <td className="py-2.5 text-right tabular-nums text-amber-400">{fmt(r.totalBet)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted-foreground mt-3 text-right">共 {filtered.length} 位客户</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type BalanceLogEntry = { id: string; targetUserId: string; targetUsername: string; targetNickname: string | null; adminUsername: string; delta: number; previousBalance: number; newBalance: number; createdAt: string };
+
+function BalanceLogsView() {
+  const [search, setSearch] = useState("");
+  const { data, isLoading } = useQuery<BalanceLogEntry[]>({ queryKey: ["/api/admin/balance-logs"] });
+
+  const fmt = (n: number) => n.toLocaleString("en-US");
+
+  const filtered = (data ?? []).filter(r => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (r.targetNickname ?? "").toLowerCase().includes(q)
+      || r.targetUsername.toLowerCase().includes(q)
+      || r.adminUsername.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card border border-card-border rounded-lg p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h2 className="font-semibold flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-400" />
+            上下分操作日志
+          </h2>
+          <Input
+            data-testid="input-balancelog-search"
+            placeholder="搜索客户或操作管理..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-sm w-52"
+          />
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center text-muted-foreground text-sm py-8 border border-dashed border-border rounded-lg">暂无记录</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-2 pr-3 text-muted-foreground font-medium">时间</th>
+                  <th className="text-left py-2 pr-3 text-muted-foreground font-medium">客户</th>
+                  <th className="text-left py-2 pr-3 text-muted-foreground font-medium">操作管理</th>
+                  <th className="text-right py-2 pr-3 text-muted-foreground font-medium">变动</th>
+                  <th className="text-right py-2 text-muted-foreground font-medium">前→后</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(r => (
+                  <tr key={r.id} data-testid={`row-balancelog-${r.id}`} className="border-b border-border/40 hover:bg-muted/20">
+                    <td className="py-2.5 pr-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(r.createdAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </td>
+                    <td className="py-2.5 pr-3">
+                      <span className="font-medium">{r.targetNickname || r.targetUsername}</span>
+                      {r.targetNickname && <span className="text-xs text-muted-foreground ml-1">@{r.targetUsername}</span>}
+                    </td>
+                    <td className="py-2.5 pr-3 text-muted-foreground text-xs">{r.adminUsername}</td>
+                    <td className={`py-2.5 pr-3 text-right font-bold tabular-nums ${r.delta > 0 ? "text-green-400" : "text-red-400"}`}>
+                      {r.delta > 0 ? "+" : ""}{fmt(r.delta)}
+                    </td>
+                    <td className="py-2.5 text-right text-xs text-muted-foreground tabular-nums">
+                      {fmt(r.previousBalance)} → {fmt(r.newBalance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-xs text-muted-foreground mt-3 text-right">共 {filtered.length} 条记录</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

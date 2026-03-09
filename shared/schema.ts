@@ -87,6 +87,19 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const balanceLogs = pgTable("balance_logs", {
+  id: varchar("id", { length: 36 }).primaryKey(),
+  targetUserId: varchar("target_user_id", { length: 36 }).notNull(),
+  targetUsername: text("target_username").notNull(),
+  targetNickname: text("target_nickname"),
+  adminUsername: text("admin_username").notNull(),
+  delta: integer("delta").notNull(),
+  previousBalance: integer("previous_balance").notNull(),
+  newBalance: integer("new_balance").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type BalanceLog = typeof balanceLogs.$inferSelect;
+
 export const privateMessages = pgTable("private_messages", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: varchar("user_id", { length: 36 }).notNull(),
