@@ -8,7 +8,7 @@ import Header from "@/components/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard, TrendingUp, Trophy, Lock, ImageIcon, Users } from "lucide-react";
+import { Send, Coins, Trash2, MicOff, Ban, Settings, Play, Pause, ChevronDown, ChevronUp, ShieldAlert, LayoutDashboard, TrendingUp, Trophy, Lock, LockOpen, ImageIcon, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import type { Message, Bet, BetRound, BetOption, Room } from "@shared/schema";
@@ -29,6 +29,7 @@ export default function RoomPage() {
   const [liveMessages, setLiveMessages] = useState<Message[]>([]);
   const [liveRound, setLiveRound] = useState<BetRoundWithBets | null | undefined>(undefined);
   const [chatMuted, setChatMuted] = useState(false);
+  const [roomLocked, setRoomLocked] = useState(false);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [optionPoints, setOptionPoints] = useState<Record<string, string>>({});
   const [pendingBet, setPendingBet] = useState<{ option: string; amount: number } | null>(null);
@@ -110,7 +111,10 @@ export default function RoomPage() {
   }, [messages]);
 
   useEffect(() => {
-    if (room) setChatMuted(!!(room as any).chatMuted);
+    if (room) {
+      setChatMuted(!!(room as any).chatMuted);
+      setRoomLocked(!!(room as any).isLocked);
+    }
   }, [room]);
 
   // Restore persistedBanker from server when component mounts (survives page navigation)
@@ -240,6 +244,9 @@ export default function RoomPage() {
         if (data.type === "ROOM_CHAT_MUTED") {
           setChatMuted(data.chatMuted);
         }
+        if (data.type === "ROOM_LOCKED") {
+          setRoomLocked(data.isLocked);
+        }
         if (data.type === "BOT_LOW_BALANCE") {
           queryClient.invalidateQueries({ queryKey: ["/api/admin/low-balance-bots"] });
         }
@@ -314,6 +321,12 @@ export default function RoomPage() {
   const muteChatMutation = useMutation({
     mutationFn: (muted: boolean) => apiRequest("PATCH", `/api/admin/rooms/${roomId}/chat-mute`, { chatMuted: muted }),
     onSuccess: (_, muted) => toast({ title: muted ? "聊天室已全体禁言" : "已解除全体禁言" }),
+    onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const lockRoomMutation = useMutation({
+    mutationFn: (locked: boolean) => apiRequest("PATCH", `/api/admin/rooms/${roomId}/lock`, { isLocked: locked }),
+    onSuccess: (_, locked) => toast({ title: locked ? "房间已封盘" : "房间已开盘" }),
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
   });
 
@@ -621,6 +634,16 @@ export default function RoomPage() {
             <ShieldAlert className="w-3.5 h-3.5 text-primary shrink-0" />
             <span className="text-xs font-semibold text-primary">管理控制台</span>
             <div className="flex items-center gap-1.5 ml-auto">
+              <Button
+                size="sm"
+                variant={roomLocked ? "destructive" : "outline"}
+                className={`h-6 px-2 text-xs ${roomLocked ? "bg-red-600 hover:bg-red-700 text-white border-red-600" : ""}`}
+                data-testid="button-admin-room-lock"
+                disabled={lockRoomMutation.isPending}
+                onClick={() => lockRoomMutation.mutate(!roomLocked)}
+              >
+                {roomLocked ? <><LockOpen className="w-3 h-3 mr-1" />开盘</> : <><Lock className="w-3 h-3 mr-1" />封盘</>}
+              </Button>
               <Button
                 size="sm"
                 variant={chatMuted ? "destructive" : "outline"}
@@ -1085,6 +1108,12 @@ export default function RoomPage() {
       <div className="flex overflow-hidden flex-1">
         {/* Chat area */}
         <div className="flex-1 flex flex-col min-w-0">
+          {roomLocked && !isAdmin && (
+            <div className="px-3 py-2 bg-red-500/10 border-b border-red-500/20 text-xs text-red-500 dark:text-red-400 text-center flex items-center justify-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" />
+              房间已封盘，等待开盘中...
+            </div>
+          )}
           {chatMuted && !isAdmin && (
             <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
               <MicOff className="w-3.5 h-3.5" />
@@ -1159,8 +1188,8 @@ export default function RoomPage() {
                 value={messageText}
                 onChange={handleMessageInput}
                 onKeyDown={(e) => { if (e.key === "Escape") setMentionQuery(null); }}
-                placeholder={chatMuted && !isAdmin ? "聊天室已禁言" : isAdmin ? "输入消息，@ 提及用户..." : "输入消息（最多30字）..."}
-                disabled={!isAdmin && chatMuted}
+                placeholder={!isAdmin && roomLocked ? "房间已封盘" : chatMuted && !isAdmin ? "聊天室已禁言" : isAdmin ? "输入消息，@ 提及用户..." : "输入消息（最多30字）..."}
+                disabled={!isAdmin && (chatMuted || roomLocked)}
                 maxLength={isAdmin ? 5000 : 30}
                 className="flex-1 bg-card border-card-border"
                 autoComplete="off"
@@ -1185,7 +1214,7 @@ export default function RoomPage() {
                 type="submit"
                 size="icon"
                 data-testid="button-send"
-                disabled={sendMutation.isPending || !messageText.trim() || (!isAdmin && chatMuted)}
+                disabled={sendMutation.isPending || !messageText.trim() || (!isAdmin && (chatMuted || roomLocked))}
               >
                 <Send className="w-4 h-4" />
               </Button>
@@ -1256,7 +1285,7 @@ export default function RoomPage() {
                       className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                       data-testid="button-confirm-bet"
                       onClick={confirmBet}
-                      disabled={betMutation.isPending}
+                      disabled={betMutation.isPending || (!isAdmin && roomLocked)}
                     >
                       {betMutation.isPending ? "提交中..." : "✓ 确认点餐"}
                     </Button>

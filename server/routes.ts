@@ -485,6 +485,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     if (sender.role !== "admin") {
       const room = await storage.getRoom(req.params.id);
+      if (room?.isLocked) return res.status(403).json({ error: "房间已封盘，请等待开盘" });
       if (room?.chatMuted) return res.status(403).json({ error: "当前聊天室已被管理员禁言" });
       const spamErr = checkSpam(sender.id, parsed.data.content);
       if (spamErr) return res.status(429).json({ error: spamErr });
@@ -554,6 +555,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!room) return res.status(404).json({ error: "房间不存在" });
     broadcast(req.params.id, { type: "ROOM_CHAT_MUTED", chatMuted: parsed.data.chatMuted });
     res.json({ id: room.id, chatMuted: room.chatMuted });
+  });
+
+  app.patch("/api/admin/rooms/:id/lock", requireAdmin, async (req, res) => {
+    const schema = z.object({ isLocked: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+    const room = await storage.updateRoom(req.params.id, { isLocked: parsed.data.isLocked });
+    if (!room) return res.status(404).json({ error: "房间不存在" });
+    broadcast(req.params.id, { type: "ROOM_LOCKED", isLocked: parsed.data.isLocked });
+    res.json({ id: room.id, isLocked: room.isLocked });
   });
 
   // Contact admin (public — for unauthenticated or banned users)
@@ -1217,6 +1228,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // BETS
   app.post("/api/rooms/:id/bets", requireAuth, async (req, res) => {
+    const roomForLockCheck = await storage.getRoom(req.params.id);
+    if (roomForLockCheck?.isLocked && (req as any).session?.userId) {
+      const betUser = await storage.getUser((req as any).session.userId);
+      if (betUser?.role !== "admin") return res.status(403).json({ error: "房间已封盘，请等待开盘" });
+    }
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round) return res.status(400).json({ error: "当前没有开放的投注" });
     if (round.status === "paused") return res.status(400).json({ error: "点餐已暂停，请等待恢复" });
