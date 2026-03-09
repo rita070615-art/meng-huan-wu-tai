@@ -2191,10 +2191,25 @@ function PlatformStats() {
             <Input data-testid="input-stats-to" type="date" value={to} onChange={e => setTo(e.target.value)} className="bg-background text-sm h-9" />
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button size="sm" data-testid="button-apply-stats-filter" onClick={applyFilter} disabled={isFetching} className="gap-1.5">
             <BarChart2 className="w-3.5 h-3.5" />
             查询
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="button-stats-today"
+            className="h-8 text-xs"
+            onClick={() => {
+              const today = new Date().toISOString().split("T")[0];
+              setFrom(today);
+              setTo(today);
+              setAppliedFrom(today);
+              setAppliedTo(today);
+            }}
+          >
+            今天
           </Button>
           {(appliedFrom || appliedTo) && (
             <Button size="sm" variant="outline" data-testid="button-clear-stats-filter" onClick={clearFilter}>
