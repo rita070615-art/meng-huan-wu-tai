@@ -212,6 +212,20 @@ export default function RoomPage() {
         if (data.type === "BET_OPTIONS_UPDATED" && data.round) {
           setLiveRound((prev) => prev ? { ...prev, options: data.round.options } : null);
         }
+        if (data.type === "BET_ROUND_CANCELLED") {
+          setLiveRound(null);
+          setLiveBets([]);
+          setOptionPoints({});
+          setDoubleMode(false);
+          if (data.message) setLiveMessages((prev) => {
+            if (prev.some((m: any) => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
+          queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}`] });
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+        }
         if (data.type === "BET_ROUND_PAUSED") {
           setLiveRound((prev) => prev ? { ...prev, status: "paused" } : null);
         }
@@ -357,9 +371,13 @@ export default function RoomPage() {
     mutationFn: () => apiRequest("POST", `/api/rooms/${roomId}/bet-round/cancel`, {}),
     onSuccess: () => {
       setLiveRound(null);
+      setLiveBets([]);
       setOptionPoints({});
       setDoubleMode(false);
       setCancelRoundConfirm(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "点餐已取消，餐费已退还" });
     },
     onError: (e: Error) => { setCancelRoundConfirm(false); toast({ title: "取消失败", description: e.message, variant: "destructive" }); },

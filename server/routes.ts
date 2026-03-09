@@ -695,8 +695,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       content: startContent,
       type: "system",
     });
-    // Clear any pending banker decision now that a new round has started
-    await storage.setPendingBanker(req.params.id, null);
+    // Only clear pendingBanker if this is a brand-new banker (not a 续庄 by the same banker).
+    // Preserving it during a 续庄 round ensures that if the round is cancelled, the
+    // accumulated cumulativeGrossProfit from previous rounds is not lost — so exit pump
+    // can still be correctly applied when the banker eventually steps down (下庄).
+    {
+      const existingRoom = await storage.getRoom(req.params.id);
+      const prevPending = (existingRoom as any)?.pendingBanker;
+      const isContinuingSameBanker = carryOver > 0 && prevPending?.userId === bankerUserId;
+      if (!isContinuingSameBanker) {
+        await storage.setPendingBanker(req.params.id, null);
+      }
+    }
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
 
     // Auto-bet: trigger shill accounts with staggered random delays to mimic real users
@@ -1179,7 +1189,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     const cancelled = await storage.cancelBetRound(round.id);
-    await storage.setPendingBanker(req.params.id, null);
+
+    // Only clear pendingBanker if this was NOT a 续庄 continuation.
+    // If it was a 续庄 round, the pendingBanker still holds the accumulated
+    // cumulativeGrossProfit from previous rounds — we must preserve it so that
+    // exit pump is correctly applied when the banker eventually steps down (下庄).
+    {
+      const existingRoom = await storage.getRoom(req.params.id);
+      const prevPending = (existingRoom as any)?.pendingBanker;
+      const wasCarryOver = ((round as any).carryOver ?? 0) > 0;
+      const isSameBanker = wasCarryOver && prevPending?.userId === round.bankerUserId;
+      if (!isSameBanker) {
+        await storage.setPendingBanker(req.params.id, null);
+      }
+    }
+
     const msg = await storage.createMessage({
       roomId: req.params.id,
       content: "本轮点餐已取消，所有餐费已退还。",
