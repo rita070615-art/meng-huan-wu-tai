@@ -2441,6 +2441,11 @@ type SessionRecord = { id: number; roomId: string; roomName: string; openedAt: s
 function SessionWinLoss() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
+
   const { data, isLoading, isFetching, refetch } = useQuery<SessionRecord[]>({
     queryKey: ["/api/admin/session-winloss"],
   });
@@ -2452,12 +2457,20 @@ function SessionWinLoss() {
     return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
   };
 
-  const sessions = data ?? [];
+  const today = new Date().toISOString().split("T")[0];
+
+  const allSessions = data ?? [];
+  const sessions = allSessions.filter(sess => {
+    const t = new Date(sess.openedAt).getTime();
+    if (appliedFrom && t < new Date(appliedFrom).getTime()) return false;
+    if (appliedTo   && t > new Date(appliedTo + "T23:59:59").getTime()) return false;
+    return true;
+  });
 
   return (
     <div className="space-y-4">
       <div className="bg-card border border-card-border rounded-lg p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold flex items-center gap-2">
             <BarChart2 className="w-4 h-4 text-primary" />
             场次输赢报表
@@ -2474,6 +2487,59 @@ function SessionWinLoss() {
               <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
             </Button>
           </div>
+        </div>
+
+        {/* Date filter */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">开始日期</Label>
+            <Input
+              data-testid="input-session-from"
+              type="date"
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+              className="h-8 text-sm w-36"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">结束日期</Label>
+            <Input
+              data-testid="input-session-to"
+              type="date"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              className="h-8 text-sm w-36"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs"
+            data-testid="button-session-today"
+            onClick={() => { setFrom(today); setTo(today); setAppliedFrom(today); setAppliedTo(today); }}
+          >
+            今天
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 text-xs"
+            data-testid="button-session-query"
+            onClick={() => { setAppliedFrom(from); setAppliedTo(to); }}
+          >
+            查询
+          </Button>
+          {(appliedFrom || appliedTo) && (
+            <button
+              data-testid="button-session-clear"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => { setFrom(""); setTo(""); setAppliedFrom(""); setAppliedTo(""); }}
+            >
+              清除筛选
+            </button>
+          )}
+          {(appliedFrom || appliedTo) && (
+            <span className="text-xs text-primary">{appliedFrom || "—"} 至 {appliedTo || "—"}</span>
+          )}
         </div>
 
         {isLoading ? (
