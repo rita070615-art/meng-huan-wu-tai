@@ -739,9 +739,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           setTimeout(async () => {
             try {
-              // Verify the round is still active before placing bet
+              // Verify the round is still open (not paused/closed/cancelled) before placing bet
               const activeRound = await storage.getActiveBetRound(roomId);
-              if (!activeRound || activeRound.id !== roundId) return;
+              if (!activeRound || activeRound.id !== roundId || activeRound.status !== "open") return;
 
               const minStep = Math.max(1, Math.ceil(botCfg.minAmount / 50));
               const maxStep = Math.max(minStep, Math.floor(botCfg.maxAmount / 50));
