@@ -1828,22 +1828,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const platformNetCash = totalDeposits - totalWithdrawals;
     const pumpCollected   = platformNetCash - totalUserBalances;
 
-    // Period pump from game rounds in selected date range
+    // All-time pump + period pump from game rounds
+    let totalPumpAllTime = 0;
     let periodPump = 0;
     let periodRounds = 0;
     let periodBets = 0;
     for (const r of rounds) {
       if (r.status !== "closed") continue;
+      const pumpRate = (r as any).pumpRate ?? 0;
+      const carryOver = (r as any).carryOver ?? 0;
+      const bankerMax = (r as any).bankerMaxBet ?? 0;
+      const newPortion = Math.max(0, bankerMax - carryOver);
+      const roundPump = Math.floor(newPortion * pumpRate / 100);
+      totalPumpAllTime += roundPump;
+
       const d = r.closedAt ? new Date(r.closedAt) : r.createdAt ? new Date(r.createdAt) : null;
       if (fromDate && d && d < fromDate) continue;
       if (toDate && d && d > toDate) continue;
       periodRounds += 1;
       periodBets += r.bets.length;
-      const pumpRate = (r as any).pumpRate ?? 0;
-      const carryOver = (r as any).carryOver ?? 0;
-      const bankerMax = (r as any).bankerMaxBet ?? 0;
-      const newPortion = Math.max(0, bankerMax - carryOver);
-      periodPump += Math.floor(newPortion * pumpRate / 100);
+      periodPump += roundPump;
     }
 
     return res.json({
@@ -1853,6 +1857,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       shillTotalBalances,
       platformNetCash,
       pumpCollected,
+      totalPumpAllTime,
       periodPump,
       periodRounds,
       periodBets,

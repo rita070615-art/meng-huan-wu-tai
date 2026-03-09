@@ -2132,12 +2132,12 @@ function PlatformStats() {
         },
         {
           label: "游戏抽水累计",
-          value: data.pumpCollected,
+          value: data.totalPumpAllTime,
           icon: <BarChart2 className="w-5 h-5" />,
-          color: data.pumpCollected >= 0 ? "text-amber-400" : "text-red-400",
+          color: "text-amber-400",
           bg: "bg-amber-500/10",
-          sign: data.pumpCollected >= 0 ? "+" : "",
-          desc: "净流入 − 用户当前总持有 = 平台游戏抽水",
+          sign: "+",
+          desc: "历史所有场次上庄抽水总和（按出庄率累加）",
         },
         {
           label: "用户当前总持有",
