@@ -1886,11 +1886,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // Customer win/loss records — visible to all admins
   app.get("/api/admin/customer-winloss", requireAdmin, async (req, res) => {
+    const fromDate = req.query.from ? new Date(String(req.query.from)) : null;
+    const toDate   = req.query.to   ? new Date(String(req.query.to) + "T23:59:59") : null;
+
     const rounds = await storage.getAllBetRoundsWithBets();
     const statMap = new Map<string, { userId: string; username: string; nickname: string | null; rounds: number; winAmount: number; lossAmount: number }>();
 
     for (const round of rounds) {
       if (round.status !== "closed" || !round.winnerOption) continue;
+      const d = round.closedAt ? new Date(round.closedAt) : round.createdAt ? new Date(round.createdAt) : null;
+      if (fromDate && d && d < fromDate) continue;
+      if (toDate   && d && d > toDate)   continue;
       for (const bet of round.bets) {
         if (!statMap.has(bet.userId)) {
           statMap.set(bet.userId, { userId: bet.userId, username: bet.username, nickname: bet.nickname ?? null, rounds: 0, winAmount: 0, lossAmount: 0 });

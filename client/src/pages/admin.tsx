@@ -2268,7 +2268,20 @@ type WinLossRecord = { userId: string; username: string; nickname: string | null
 
 function CustomerWinLoss() {
   const [search, setSearch] = useState("");
-  const { data, isLoading } = useQuery<WinLossRecord[]>({ queryKey: ["/api/admin/customer-winloss"] });
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [appliedFrom, setAppliedFrom] = useState("");
+  const [appliedTo, setAppliedTo] = useState("");
+
+  const qParams = new URLSearchParams();
+  if (appliedFrom) qParams.set("from", appliedFrom);
+  if (appliedTo)   qParams.set("to",   appliedTo);
+  const qString = qParams.toString();
+
+  const { data, isLoading, refetch, isFetching } = useQuery<WinLossRecord[]>({
+    queryKey: ["/api/admin/customer-winloss", qString],
+    queryFn: () => fetch(`/api/admin/customer-winloss${qString ? "?" + qString : ""}`, { credentials: "include" }).then(r => r.json()),
+  });
 
   const fmt = (n: number) => n.toLocaleString("en-US");
 
@@ -2278,10 +2291,12 @@ function CustomerWinLoss() {
     return (r.nickname ?? "").toLowerCase().includes(q) || r.username.toLowerCase().includes(q);
   });
 
+  const today = new Date().toISOString().split("T")[0];
+
   return (
     <div className="space-y-4">
       <div className="bg-card border border-card-border rounded-lg p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-green-400" />
             客户输赢记录
@@ -2293,6 +2308,63 @@ function CustomerWinLoss() {
             onChange={e => setSearch(e.target.value)}
             className="h-8 text-sm w-52"
           />
+        </div>
+
+        {/* Date filter */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">开始日期</Label>
+            <Input
+              data-testid="input-winloss-from"
+              type="date"
+              value={from}
+              onChange={e => setFrom(e.target.value)}
+              className="h-8 text-sm w-36"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground whitespace-nowrap">结束日期</Label>
+            <Input
+              data-testid="input-winloss-to"
+              type="date"
+              value={to}
+              onChange={e => setTo(e.target.value)}
+              className="h-8 text-sm w-36"
+            />
+          </div>
+          <Button
+            size="sm"
+            data-testid="button-winloss-today"
+            variant="outline"
+            className="h-8 text-xs"
+            onClick={() => { setFrom(today); setTo(today); setAppliedFrom(today); setAppliedTo(today); }}
+          >
+            今天
+          </Button>
+          <Button
+            size="sm"
+            data-testid="button-winloss-query"
+            className="h-8 text-xs"
+            disabled={isFetching}
+            onClick={() => { setAppliedFrom(from); setAppliedTo(to); }}
+          >
+            <RefreshCw className={`w-3 h-3 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+            查询
+          </Button>
+          {(appliedFrom || appliedTo) && (
+            <button
+              data-testid="button-winloss-clear"
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => { setFrom(""); setTo(""); setAppliedFrom(""); setAppliedTo(""); }}
+            >
+              清除筛选
+            </button>
+          )}
+          {(appliedFrom || appliedTo) && (
+            <span className="text-xs text-primary">
+              {appliedFrom || "—"} 至 {appliedTo || "—"}
+            </span>
+          )}
         </div>
 
         {isLoading ? (
