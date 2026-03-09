@@ -622,6 +622,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const existing = await storage.getActiveBetRound(req.params.id);
     if (existing) return res.status(400).json({ error: "已有进行中的投注轮" });
 
+    // Must be 开盘 (unlocked) before starting a game
+    const roomForStart = await storage.getRoom(req.params.id);
+    if (roomForStart?.isLocked) {
+      return res.status(403).json({ error: "请先开盘再开始游戏" });
+    }
+
     // New order: 体力, 法力, 力量, 耐力
     const defaultOptions = [
       { key: "B", label: "体力", color: "#22c55e" },

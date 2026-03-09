@@ -827,8 +827,8 @@ export default function RoomPage() {
                     size="sm"
                     className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                     data-testid="button-admin-start-round"
-                    disabled={startRoundMutation.isPending || effectiveDisplayCap <= 0}
-                    title={effectiveDisplayCap <= 0 ? "本局上限须大于0" : ""}
+                    disabled={startRoundMutation.isPending || effectiveDisplayCap <= 0 || roomLocked}
+                    title={roomLocked ? "请先开盘再开始游戏" : effectiveDisplayCap <= 0 ? "本局上限须大于0" : ""}
                     onClick={() => {
                       const defaultOptsNow = defaultOpts;
                       startRoundMutation.mutate({
@@ -961,9 +961,13 @@ export default function RoomPage() {
                   size="sm"
                   className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                   data-testid="button-admin-start-round"
-                  disabled={startRoundMutation.isPending || !bankerUserId || !bankerOption || !bankerMaxBet}
-                  title={!bankerUserId || !bankerOption || !bankerMaxBet ? "必须选择庄、庄属性并设置标庄金额" : ""}
+                  disabled={startRoundMutation.isPending || !bankerUserId || !bankerOption || !bankerMaxBet || roomLocked}
+                  title={roomLocked ? "请先开盘再开始游戏" : !bankerUserId || !bankerOption || !bankerMaxBet ? "必须选择庄、庄属性并设置标庄金额" : ""}
                   onClick={() => {
+                    if (roomLocked) {
+                      toast({ title: "请先开盘再开始游戏", variant: "destructive" });
+                      return;
+                    }
                     if (!bankerUserId || !bankerOption || !bankerMaxBet) {
                       toast({ title: "请先选择庄、庄属性并设置标庄金额", variant: "destructive" });
                       return;
