@@ -83,6 +83,30 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Run schema migrations (idempotent — safe to run on every startup)
+  try {
+    const migrationPool = new Pool({ connectionString: process.env.DATABASE_URL });
+    await migrationPool.query(`
+      ALTER TABLE rooms ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    await migrationPool.query(`
+      CREATE TABLE IF NOT EXISTS room_sessions (
+        id SERIAL PRIMARY KEY,
+        room_id VARCHAR(36) NOT NULL,
+        room_name TEXT NOT NULL DEFAULT '',
+        opened_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        closed_at TIMESTAMP
+      );
+    `);
+    await migrationPool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    await migrationPool.end();
+    console.log("Schema migrations applied.");
+  } catch (e) {
+    console.error("Schema migration failed:", e);
+  }
+
   // Ensure webhook URLs are always set correctly
   try {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
