@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, desc, and, or } from "drizzle-orm";
+import { eq, desc, and, or, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
   users, rooms, betRounds, bets, messages, botSettings, privateMessages, balanceLogs, roomSessions,
@@ -463,12 +463,12 @@ export class DbStorage implements IStorage {
   async closeRoomSession(roomId: string): Promise<void> {
     await db.update(roomSessions)
       .set({ closedAt: new Date() })
-      .where(and(eq(roomSessions.roomId, roomId), eq(roomSessions.closedAt, null as any)));
+      .where(and(eq(roomSessions.roomId, roomId), isNull(roomSessions.closedAt)));
   }
 
   async getOpenRoomSession(roomId: string): Promise<RoomSession | undefined> {
     const rows = await db.select().from(roomSessions)
-      .where(and(eq(roomSessions.roomId, roomId), eq(roomSessions.closedAt, null as any)))
+      .where(and(eq(roomSessions.roomId, roomId), isNull(roomSessions.closedAt)))
       .limit(1);
     return rows[0];
   }
