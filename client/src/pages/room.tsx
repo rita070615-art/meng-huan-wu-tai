@@ -232,6 +232,7 @@ export default function RoomPage() {
         }
         if (data.type === "BET_ROUND_PAUSED") {
           setLiveRound((prev) => prev ? { ...prev, status: "paused" } : null);
+          setPendingBet(null);
         }
         if (data.type === "BET_ROUND_RESUMED") {
           setLiveRound((prev) => prev ? { ...prev, status: "open" } : null);
@@ -1289,7 +1290,7 @@ export default function RoomPage() {
                       className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 text-white"
                       data-testid="button-confirm-bet"
                       onClick={confirmBet}
-                      disabled={betMutation.isPending || (!isAdmin && roomLocked)}
+                      disabled={betMutation.isPending || (!isAdmin && roomLocked) || currentRound?.status === "paused"}
                     >
                       {betMutation.isPending ? "提交中..." : "✓ 确认点餐"}
                     </Button>
