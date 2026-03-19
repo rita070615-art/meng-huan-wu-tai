@@ -635,6 +635,7 @@ function UsersAdmin() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 5;
   const [confirmRoleChange, setConfirmRoleChange] = useState<{ id: string; newRole: string } | null>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<{ id: string; name: string } | null>(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -688,6 +689,16 @@ function UsersAdmin() {
       toast({ title: vars.role === "admin" ? "已升级为管理员" : "已降为普通用户" });
     },
     onError: (e: Error) => toast({ title: "操作失败", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setConfirmDeleteUser(null);
+      toast({ title: "账号已删除" });
+    },
+    onError: (e: Error) => { setConfirmDeleteUser(null); toast({ title: "删除失败", description: e.message, variant: "destructive" }); },
   });
 
   const updateNicknameMutation = useMutation({
@@ -799,6 +810,26 @@ function UsersAdmin() {
           </div>
         );
       })()}
+
+      {confirmDeleteUser && (
+        <div className="mb-4 border border-red-500/40 bg-red-500/5 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-red-400">
+            确认永久删除账号：{confirmDeleteUser.name}？此操作无法恢复。
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="h-6 text-xs bg-red-600 hover:bg-red-700 text-white"
+              disabled={deleteUserMutation.isPending}
+              onClick={() => deleteUserMutation.mutate(confirmDeleteUser.id)}
+              data-testid="button-confirm-delete-user"
+            >
+              {deleteUserMutation.isPending ? "删除中..." : "确认删除"}
+            </Button>
+            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setConfirmDeleteUser(null)}>取消</Button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-3">
         <Input
@@ -1007,6 +1038,16 @@ function UsersAdmin() {
                           }`}
                         >
                           设置管理
+                        </Button>
+                      )}
+                      {u.id !== currentUser?.id && (
+                        <Button
+                          size="sm"
+                          data-testid={`button-delete-user-${u.id}`}
+                          onClick={() => setConfirmDeleteUser({ id: u.id, name: u.nickname || u.username })}
+                          className="h-6 px-2 text-xs bg-transparent border border-red-800/50 text-red-500/70 hover:border-red-500 hover:text-red-400 hover:bg-red-500/10"
+                        >
+                          删除
                         </Button>
                       )}
                     </div>

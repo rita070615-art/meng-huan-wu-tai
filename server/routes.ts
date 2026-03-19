@@ -1568,6 +1568,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: user!.id, username: user!.username, role: user!.role });
   });
 
+  app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "用户不存在" });
+    if (target.id === req.session.userId) return res.status(400).json({ error: "不能删除自己的账号" });
+    if (isProtectedAdmin(target)) return res.status(403).json({ error: "不能删除受保护账号" });
+    await storage.deleteUser(req.params.id);
+    res.json({ ok: true });
+  });
+
   app.patch("/api/admin/users/:id/shill", requireAdmin, async (req, res) => {
     const schema = z.object({ isShill: z.boolean() });
     const parsed = schema.safeParse(req.body);

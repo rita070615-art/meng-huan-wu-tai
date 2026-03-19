@@ -79,6 +79,7 @@ export interface IStorage {
   markReadByAdmin(userId: string): Promise<void>;
   markReadByUser(userId: string): Promise<void>;
   deletePrivateThread(userId: string): Promise<void>;
+  deleteUser(id: string): Promise<void>;
   nukeAllData(): Promise<void>;
 
   // Balance Logs
@@ -434,6 +435,13 @@ export class DbStorage implements IStorage {
 
   async deletePrivateThread(userId: string): Promise<void> {
     await db.delete(privateMessages).where(eq(privateMessages.userId, userId));
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    // Delete all data tied to this user, preserving bets/balance logs for records
+    await db.delete(privateMessages).where(eq(privateMessages.userId, id));
+    await db.delete(messages).where(eq(messages.userId, id));
+    await db.delete(users).where(eq(users.id, id));
   }
 
   async nukeAllData(): Promise<void> {
