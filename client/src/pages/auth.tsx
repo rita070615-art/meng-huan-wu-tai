@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Shield, CheckCircle2, MessageCircle, Send, X, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Shield, CheckCircle2, MessageCircle, Send, X, ShieldCheck, ShieldAlert, Eye, EyeOff } from "lucide-react";
 import logoImg from "@assets/梦幻舞台.png";
 
 type View = "login" | "register" | "forgot";
@@ -20,6 +20,7 @@ export default function AuthPage() {
   const [username, setUsername] = useState("");
   const [nickname, setNickname] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -311,16 +312,27 @@ export default function AuthPage() {
                       </button>
                     )}
                   </div>
-                  <Input
-                    id="password"
-                    data-testid="input-password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="请输入密码"
-                    autoComplete={view === "login" ? "current-password" : "new-password"}
-                    className="bg-background border-border"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      data-testid="input-password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="请输入密码"
+                      autoComplete={view === "login" ? "current-password" : "new-password"}
+                      className="bg-background border-border pr-10"
+                    />
+                    <button
+                      type="button"
+                      data-testid="button-toggle-password"
+                      onClick={() => setShowPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <Button
