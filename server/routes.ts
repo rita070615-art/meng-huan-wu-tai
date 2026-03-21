@@ -786,40 +786,71 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
                 });
                 return;
               }
-              // Check effective cap before shill bet (pump only on new portion)
+              // Available options (exclude banker's)
+              const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
+              if (availableOptions.length === 0) return;
+
+              // Randomly pick how many options to bet on: 1 (~55%), 2 (~30%), 3 (~15%)
+              const maxChoices = Math.min(availableOptions.length, 3);
+              const rng = Math.random();
+              const numChoices = maxChoices >= 3 && rng < 0.15 ? 3
+                : maxChoices >= 2 && rng < 0.45 ? 2
+                : 1;
+
+              // Shuffle and pick numChoices options
+              const shuffled = [...availableOptions].sort(() => Math.random() - 0.5).slice(0, numChoices);
+
+              // Calculate effective cap remaining
+              let remainingCap = Infinity;
               if (activeRound.bankerMaxBet) {
                 const sCarryOver = (activeRound as any).carryOver ?? 0;
                 const sNew = Math.max(0, (activeRound.bankerMaxBet as number) - sCarryOver);
                 const sPump = (activeRound as any).pumpRate ?? 0;
                 const sEffCap = Math.floor(sNew * (1 - sPump / 100)) + sCarryOver;
                 const currentTotal = await storage.getTotalBetsForRound(roundId);
-                if (currentTotal >= sEffCap) return; // Already full
-                if (amount > sEffCap - currentTotal) return; // Would exceed cap
+                if (currentTotal >= sEffCap) return;
+                remainingCap = sEffCap - currentTotal;
               }
-              const availableOptions = optionsList.filter(o => !activeRound.bankerOption || o.key !== activeRound.bankerOption);
-              const randomOption = availableOptions[Math.floor(Math.random() * availableOptions.length)].key;
+
               const shillUser = await storage.getUser(shillId);
-              await storage.updateUserBalance(shillId, shillBalance - amount);
-              const bet = await storage.placeBet({
-                roundId,
-                roomId,
-                userId: shillId,
-                username: shillUsername,
-                nickname: shillUser?.nickname || null,
-                option: randomOption,
-                amount,
-              });
-              const shillOptLabel = (activeRound.options as Array<{ key: string; label: string }>).find(o => o.key === randomOption)?.label || randomOption;
-              const shillDisplayName = shillUser?.nickname || shillUsername;
-              const shillBetMsg = await storage.createMessage({
-                roomId,
-                userId: shillId,
-                username: shillDisplayName,
-                content: `${shillDisplayName}:${shillOptLabel}${amount.toLocaleString()}`,
-                type: "bet",
-              });
-              broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
-              broadcast(roomId, { type: "NEW_BET", bet });
+              let runningBalance = shillBalance;
+
+              // Place one bet per chosen option
+              for (const chosenOpt of shuffled) {
+                // Re-roll amount for each option
+                const minStep = Math.max(1, Math.ceil(botCfg.minAmount / 50));
+                const maxStep = Math.max(minStep, Math.floor(botCfg.maxAmount / 50));
+                const optAmount = (minStep + Math.floor(Math.random() * (maxStep - minStep + 1))) * 50;
+
+                if (runningBalance < optAmount) break; // Not enough balance
+                if (optAmount > remainingCap) break;   // Would exceed cap
+
+                runningBalance -= optAmount;
+                remainingCap -= optAmount;
+                await storage.updateUserBalance(shillId, runningBalance);
+
+                const bet = await storage.placeBet({
+                  roundId,
+                  roomId,
+                  userId: shillId,
+                  username: shillUsername,
+                  nickname: shillUser?.nickname || null,
+                  option: chosenOpt.key,
+                  amount: optAmount,
+                });
+
+                const shillOptLabel = (activeRound.options as Array<{ key: string; label: string }>).find(o => o.key === chosenOpt.key)?.label || chosenOpt.key;
+                const shillDisplayName = shillUser?.nickname || shillUsername;
+                const shillBetMsg = await storage.createMessage({
+                  roomId,
+                  userId: shillId,
+                  username: shillDisplayName,
+                  content: `${shillDisplayName}:${shillOptLabel}${optAmount.toLocaleString()}`,
+                  type: "bet",
+                });
+                broadcast(roomId, { type: "MESSAGE", message: shillBetMsg });
+                broadcast(roomId, { type: "NEW_BET", bet });
+              }
 
               // Auto-pause when shill bet fills the effective cap
               if (activeRound.bankerMaxBet) {
