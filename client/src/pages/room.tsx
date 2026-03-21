@@ -1322,9 +1322,10 @@ export default function RoomPage() {
                               setSelectedOptions(new Set(selectableKeys));
                             }
                           }}
-                          className="text-[11px] text-primary/80 hover:text-primary border border-primary/30 hover:border-primary/60 rounded px-2 py-0.5 transition-colors"
+                          className="flex flex-col items-center border border-primary/40 hover:border-primary rounded px-3 py-1 transition-colors bg-primary/5 hover:bg-primary/10"
                         >
-                          {allSelected ? "取消全选" : "全选"}
+                          <span className="text-sm font-semibold text-primary">{allSelected ? "取消全选" : "全选"}</span>
+                          <span className="text-[10px] text-muted-foreground">各属性买多少</span>
                         </button>
                       </div>
                     );
