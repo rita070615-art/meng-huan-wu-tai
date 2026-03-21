@@ -1305,31 +1305,7 @@ export default function RoomPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {(() => {
-                    const selectableKeys = options
-                      .filter(o => !(bankerOptionKey === o.key && user?.id !== (currentRound as any)?.bankerUserId))
-                      .map(o => o.key);
-                    const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedOptions.has(k));
-                    return (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          data-testid="button-select-all-options"
-                          onClick={() => {
-                            if (allSelected) {
-                              setSelectedOptions(new Set());
-                            } else {
-                              setSelectedOptions(new Set(selectableKeys));
-                            }
-                          }}
-                          className="flex flex-col items-center border border-primary/40 hover:border-primary rounded px-3 py-1 transition-colors bg-primary/5 hover:bg-primary/10"
-                        >
-                          <span className="text-sm font-semibold text-primary">{allSelected ? "取消全选" : "全选"}</span>
-                          <span className="text-[10px] text-muted-foreground">各属性买多少</span>
-                        </button>
-                      </div>
-                    );
-                  })()}
+                  <p className="text-[11px] text-muted-foreground text-center">请点击下方选择您要购买的属性</p>
                   <div
                     className="grid gap-2"
                     style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
@@ -1370,6 +1346,34 @@ export default function RoomPage() {
                       );
                     })}
                   </div>
+                  {/* Full-width select-all button below options */}
+                  {(() => {
+                    const selectableKeys = options
+                      .filter(o => !(bankerOptionKey === o.key && user?.id !== (currentRound as any)?.bankerUserId))
+                      .map(o => o.key);
+                    const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedOptions.has(k));
+                    return (
+                      <button
+                        type="button"
+                        data-testid="button-select-all-options"
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedOptions(new Set());
+                          } else {
+                            setSelectedOptions(new Set(selectableKeys));
+                          }
+                        }}
+                        className={`w-full flex items-center justify-center gap-2 py-2 rounded-md border-2 transition-all ${
+                          allSelected
+                            ? "border-primary bg-primary/15 text-primary"
+                            : "border-border/60 bg-background/40 hover:border-primary/60 hover:bg-primary/5 text-foreground"
+                        }`}
+                      >
+                        <span className="text-sm font-semibold">{allSelected ? "取消全选" : "全选"}</span>
+                        <span className="text-[11px] text-muted-foreground">各属性买多少</span>
+                      </button>
+                    );
+                  })()}
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Coins className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
