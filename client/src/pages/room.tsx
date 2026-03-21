@@ -1305,6 +1305,30 @@ export default function RoomPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {(() => {
+                    const selectableKeys = options
+                      .filter(o => !(bankerOptionKey === o.key && user?.id !== (currentRound as any)?.bankerUserId))
+                      .map(o => o.key);
+                    const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedOptions.has(k));
+                    return (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          data-testid="button-select-all-options"
+                          onClick={() => {
+                            if (allSelected) {
+                              setSelectedOptions(new Set());
+                            } else {
+                              setSelectedOptions(new Set(selectableKeys));
+                            }
+                          }}
+                          className="text-[11px] text-primary/80 hover:text-primary border border-primary/30 hover:border-primary/60 rounded px-2 py-0.5 transition-colors"
+                        >
+                          {allSelected ? "取消全选" : "全选"}
+                        </button>
+                      </div>
+                    );
+                  })()}
                   <div
                     className="grid gap-2"
                     style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, 1fr)` }}
