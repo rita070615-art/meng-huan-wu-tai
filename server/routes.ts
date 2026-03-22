@@ -1379,6 +1379,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(betsForRoom);
   });
 
+  // Cancel a single specific bet by betId
+  app.delete("/api/rooms/:id/bets/:betId", requireAuth, async (req, res) => {
+    const round = await storage.getActiveBetRound(req.params.id);
+    if (!round || round.status !== "open") {
+      return res.status(400).json({ error: "封盘或暂停期间无法撤注" });
+    }
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+    const cancelled = await storage.cancelSingleBet(req.params.betId, user.id, round.id);
+    if (!cancelled) return res.status(404).json({ error: "找不到该注单，或该注单不属于您" });
+
+    await storage.updateUserBalance(user.id, user.balance + cancelled.amount);
+
+    const updatedBets = await storage.getBetsForRound(round.id);
+    broadcast(req.params.id, { type: "BETS_UPDATED", bets: updatedBets });
+
+    const optionLabel = (round.options as Array<{ key: string; label: string }>).find(o => o.key === cancelled.option)?.label || cancelled.option;
+    const displayName = user.nickname || user.username;
+
+    // Prominent system-style cancel notice in chat
+    const cancelMsg = await storage.createMessage({
+      roomId: req.params.id,
+      content: `⚠️ ${displayName} 已撤销【${optionLabel}】下注 × ${cancelled.amount.toLocaleString()}`,
+      type: "system",
+    });
+    broadcast(req.params.id, { type: "MESSAGE", message: cancelMsg });
+
+    res.json({ refund: cancelled.amount, option: cancelled.option });
+  });
+
   app.delete("/api/rooms/:id/bets", requireAuth, async (req, res) => {
     const round = await storage.getActiveBetRound(req.params.id);
     if (!round || round.status !== "open") {

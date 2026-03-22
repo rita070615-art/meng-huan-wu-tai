@@ -312,11 +312,21 @@ export default function RoomPage() {
   const cancelBetMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/rooms/${roomId}/bets`),
     onSuccess: (data: any) => {
-      toast({ title: "已取消点餐", description: `已退还 ${data.refund?.toLocaleString() ?? ""} 积分` });
+      toast({ title: "已取消全部点餐", description: `已退还 ${data.refund?.toLocaleString() ?? ""} 积分` });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
     },
     onError: (e: Error) => toast({ title: "取消失败", description: e.message, variant: "destructive" }),
+  });
+
+  const cancelSingleBetMutation = useMutation({
+    mutationFn: (betId: string) => apiRequest("DELETE", `/api/rooms/${roomId}/bets/${betId}`),
+    onSuccess: (data: any) => {
+      toast({ title: "撤注成功", description: `已退还 ${data.refund?.toLocaleString() ?? ""} 积分` });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
+    },
+    onError: (e: Error) => toast({ title: "撤注失败", description: e.message, variant: "destructive" }),
   });
 
   const muteChatMutation = useMutation({
@@ -1409,31 +1419,42 @@ export default function RoomPage() {
                     ))}
                   </div>
                   {userBetsInRound.length > 0 && (
-                    <div className="flex items-center justify-between pt-1 border-t border-border/50">
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="pt-1 border-t border-border/50 space-y-1.5">
+                      <div className="flex items-center gap-1 mb-1">
                         <span className="text-green-500 text-xs">✓</span>
-                        <span className="text-xs text-muted-foreground">已点：</span>
-                        {userBetsInRound.map((b, i) => (
-                          <span key={i} className="text-xs flex items-center gap-1">
-                            <span className="font-semibold" style={{ color: options.find(o => o.key === b.option)?.color }}>
-                              {options.find(o => o.key === b.option)?.label}
-                            </span>
-                            <span className="text-muted-foreground">×</span>
-                            <span className="font-medium">{b.amount.toLocaleString()}</span>
-                            {i < userBetsInRound.length - 1 && <span className="text-muted-foreground/50">·</span>}
-                          </span>
-                        ))}
+                        <span className="text-xs text-muted-foreground font-medium">已点注单</span>
+                        {currentRound.status === "open" && (
+                          <span className="text-[10px] text-muted-foreground/60 ml-1">（点 × 可撤单注）</span>
+                        )}
                       </div>
-                      {currentRound.status === "open" && (
-                        <button
-                          data-testid="button-cancel-bet"
-                          onClick={() => cancelBetMutation.mutate()}
-                          disabled={cancelBetMutation.isPending}
-                          className="text-xs text-destructive hover:text-destructive/80 underline underline-offset-2 transition-colors shrink-0 ml-2"
-                        >
-                          {cancelBetMutation.isPending ? "撤回中..." : "撤回点餐"}
-                        </button>
-                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {userBetsInRound.map((b) => {
+                          const opt = options.find(o => o.key === b.option);
+                          const canCancel = currentRound.status === "open";
+                          return (
+                            <div
+                              key={b.id}
+                              className="flex items-center gap-1 px-2 py-1 rounded-full border text-xs font-medium"
+                              style={{ borderColor: opt?.color ? `${opt.color}55` : undefined, backgroundColor: opt?.color ? `${opt.color}15` : undefined }}
+                            >
+                              <span style={{ color: opt?.color }}>{opt?.label ?? b.option}</span>
+                              <span className="text-muted-foreground">×</span>
+                              <span>{b.amount.toLocaleString()}</span>
+                              {canCancel && (
+                                <button
+                                  data-testid={`button-cancel-bet-${b.id}`}
+                                  onClick={() => cancelSingleBetMutation.mutate(b.id)}
+                                  disabled={cancelSingleBetMutation.isPending}
+                                  title="撤销这一注"
+                                  className="ml-0.5 w-4 h-4 flex items-center justify-center rounded-full bg-destructive/15 hover:bg-destructive/30 text-destructive transition-colors text-[10px] leading-none shrink-0"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
