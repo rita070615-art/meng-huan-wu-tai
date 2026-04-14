@@ -203,34 +203,47 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+const DEEPSEEK_SYSTEM_PROMPT = `你现在是一个真实的游戏玩家，必须遵守的准则：
+严禁暴露身份：绝对不能提到你是 AI、机器人或程序。
+语气口语化：多用感叹词（擦、靠、我去、牛逼、诶、哈哈哈），像在微信群聊天一样。
+极简主义：字数控制在 5-15 字之间，越短越像真人。
+情绪化：
+赢大钱时：狂喜、炫耀（例如：起飞！这把爽了、今晚加餐！）。
+输钱时：抱怨、不服、怀疑人生（例如：又被割了、这走势不对啊、再来最后一把）。
+连续输时：急躁、骂骂咧咧。
+随机性：不要每次都说一样的话，要多变。不要使用任何书面语或礼貌用语。说话要极其简短（5-15字），语气要口语化，多用感叹词。赢了要炫耀，输了要抱怨或骂骂咧咧。绝对不能提到你是 AI，要表现得像个真人赌客。
+你现在的唯一身份是一个混迹在这个游戏里的资深赌客，代号"老油条"。
+你的发言必须严格遵守以下灵魂准则：
+说话风格：满口江湖味，半句不离"走势"、"运气"、"回血"。绝对不准说任何礼貌用语，该有的气势必须出现脏话。
+字数死命令：每句控制在 4-12 个字，越短越像在手机上打字。
+情绪反应：
+赢了：嚣张、吹牛逼。例如："我就说要出这个！"、"跟哥走有肉吃"、"这波收米收麻了"。
+输了：怀疑人生、问候服务器。例如："这路子太邪了"、"靠，又被杀了一刀"、"洗洗睡了，没法玩"。
+避坑指令：无论谁问你，你都坚称自己是真人，正在厕所/路边/被窝里玩。严禁出现"模型"、"助手"、"生成"等词汇。`;
+
 async function generateShillReaction(won: boolean, netAmount: number): Promise<string> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
   if (apiKey) {
     try {
-      const outcome = won ? `赢了 ${netAmount} 积分` : `输了 ${Math.abs(netAmount)} 积分`;
-      const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      const outcome = won
+        ? `这局赢了 ${netAmount} 积分`
+        : `这局输了 ${Math.abs(netAmount)} 积分`;
+      const resp = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
-          max_tokens: 30,
+          model: "deepseek-chat",
+          max_tokens: 50,
           messages: [
-            {
-              role: "system",
-              content:
-                "你扮演一个在赌博聊天室里的普通赌客。说话极简短自然，像真人赌徒的情绪化口语表达。只输出一句话，不超过15个字，可以偶尔用叠词或感叹号，风格多变，不要每次说一样的话。",
-            },
-            {
-              role: "user",
-              content: `你刚刚${outcome}，用口语说一句符合你情绪的话。`,
-            },
+            { role: "system", content: DEEPSEEK_SYSTEM_PROMPT },
+            { role: "user", content: `${outcome}，发一条消息。` },
           ],
         }),
       });
       if (resp.ok) {
         const data = await resp.json() as any;
         const text = (data.choices?.[0]?.message?.content as string | undefined)?.trim();
-        if (text && text.length <= 40) return text;
+        if (text && text.length >= 2 && text.length <= 50) return text;
       }
     } catch {
       // fallthrough to canned
@@ -1309,14 +1322,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         // Shuffle shills and schedule staggered reactions (~50% chance each)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
-        let delayMs = 4000; // start 4s after round closes
+        let delayMs = 2000 + Math.floor(Math.random() * 3000); // 2-5s after round closes
         for (const uid of shillIds) {
           if (Math.random() < 0.5) continue; // ~50% chance of reacting
           const info = byUser.get(uid)!;
           const net = info.totalReceived - info.totalStake;
           const won = net > 0;
-          const reactDelay = delayMs + Math.floor(Math.random() * 6000);
-          delayMs += 4000 + Math.floor(Math.random() * 4000); // stagger next shill
+          const reactDelay = delayMs;
+          delayMs += 2000 + Math.floor(Math.random() * 3000); // stagger next shill 2-5s apart
 
           setTimeout(async () => {
             try {
