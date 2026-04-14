@@ -1227,16 +1227,17 @@ export default function RoomPage() {
             </div>
           )}
 
+          {countdownLeft != null && countdownLeft > 0 && (
+            <div className="z-20 px-4 py-3 bg-orange-500/20 border-b border-orange-500/40 flex items-center justify-center gap-3 backdrop-blur-sm flex-shrink-0">
+              <span className="text-orange-400 font-bold text-base animate-pulse flex items-center gap-3">
+                ⏱️ 点餐倒计时
+                <span className="tabular-nums text-4xl font-extrabold text-orange-300 leading-none">{countdownLeft}</span>
+                <span className="text-lg">秒</span>
+              </span>
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto p-4 space-y-2" data-testid="chat-messages">
-            {countdownLeft != null && countdownLeft > 0 && (
-              <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-3 px-4 py-4 bg-orange-500/20 border-b border-orange-500/40 flex items-center justify-center gap-3 backdrop-blur-sm">
-                <span className="text-orange-400 font-bold text-base animate-pulse flex items-center gap-3">
-                  ⏱️ 点餐倒计时
-                  <span className="tabular-nums text-4xl font-extrabold text-orange-300 leading-none">{countdownLeft}</span>
-                  <span className="text-lg">秒</span>
-                </span>
-              </div>
-            )}
             {msgsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 rounded-lg" />)}
