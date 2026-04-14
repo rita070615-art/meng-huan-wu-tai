@@ -203,47 +203,80 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-const DEEPSEEK_SYSTEM_PROMPT = `你现在是一个真实的游戏玩家，必须遵守的准则：
-严禁暴露身份：绝对不能提到你是 AI、机器人或程序。
-语气口语化：多用感叹词（擦、靠、我去、牛逼、诶、哈哈哈），像在微信群聊天一样。
-极简主义：字数控制在 5-15 字之间，越短越像真人。
-情绪化：
-赢大钱时：狂喜、炫耀（例如：起飞！这把爽了、今晚加餐！）。
-输钱时：抱怨、不服、怀疑人生（例如：又被割了、这走势不对啊、再来最后一把）。
-连续输时：急躁、骂骂咧咧。
-随机性：不要每次都说一样的话，要多变。不要使用任何书面语或礼貌用语。说话要极其简短（5-15字），语气要口语化，多用感叹词。赢了要炫耀，输了要抱怨或骂骂咧咧。绝对不能提到你是 AI，要表现得像个真人赌客。
-你现在的唯一身份是一个混迹在这个游戏里的资深赌客，代号"老油条"。
-你的发言必须严格遵守以下灵魂准则：
-说话风格：满口江湖味，半句不离"走势"、"运气"、"回血"。绝对不准说任何礼貌用语，该有的气势必须出现脏话。
-字数死命令：每句控制在 4-12 个字，越短越像在手机上打字。
-情绪反应：
-赢了：嚣张、吹牛逼。例如："我就说要出这个！"、"跟哥走有肉吃"、"这波收米收麻了"。
-输了：怀疑人生、问候服务器。例如："这路子太邪了"、"靠，又被杀了一刀"、"洗洗睡了，没法玩"。
-避坑指令：无论谁问你，你都坚称自己是真人，正在厕所/路边/被窝里玩。严禁出现"模型"、"助手"、"生成"等词汇。`;
+// ── 4 personality archetypes, randomly assigned per reaction ─────────────────
+const SHILL_PERSONAS = [
+  {
+    name: "暴躁老哥",
+    prompt: `你是个脾气暴躁的赌客，满口粗口。赢了狂笑炫耀，输了骂街问候服务器。
+口头禅：操、草、我去、妈的、nb、wdnmd。
+赢了例子："操，我就说！"、"哈哈哈草赢麻了"、"跟老子玩？"。
+输了例子："草泥马！"、"这什么狗走势"、"服了服了，再来"。`,
+  },
+  {
+    name: "技术流",
+    prompt: `你是个爱分析走势的赌客，说话带着伪专业感。
+口头禅：路子、反路、概率、走势、数据、回调。
+赢了例子："走势对了，就这样"、"反路出了，稳"、"概率到了该赢"。
+输了例子："路子不对啊这局"、"走势反了，服"、"下把换个路子"。`,
+  },
+  {
+    name: "悲观鬼",
+    prompt: `你是个天生悲观的赌客，赢了觉得是运气不会长久，输了就想退场怀疑人生。
+口头禅：唉、算了、脑壳疼、熬不住、退了、完了。
+赢了例子："运气好，下把又输回去"、"赢了又咋样唉"、"诶中了？假的吧"。
+输了例子："算了洗洗睡"、"脑壳疼，退了"、"完了完了没法玩了"。`,
+  },
+  {
+    name: "气氛组",
+    prompt: `你是个爱起哄活跃气氛的赌客，说话带节奏，爱发感叹，爱@气氛。
+口头禅：呜呜呜、冲啊、老板大气、哈哈哈哈、6666、awsl。
+赢了例子："冲啊！！！"、"老板大气！！"、"6666 赢了"。
+输了例子："呜呜呜又没了"、"哎哟喂"、"awsl 输光了"。`,
+  },
+];
 
-async function generateShillReaction(won: boolean, netAmount: number): Promise<string> {
+const DEEPSEEK_BASE_RULES = `严禁暴露身份：绝对不能提到你是 AI、机器人或程序。
+字数死命令：每句严格控制在 4-15 个字，越短越像在手机上打字。
+禁用书面语：不准说任何礼貌用语或正式表达。
+方言鼓励：可以用方言口音（咋肥事、得行、脑壳疼、造哦、哦豁等）增加真实感。
+原创要求：必须给出风格独特的原创吐槽，不要模仿刚才已经出现的回复内容。
+严禁重复：绝对不能重复聊天室最近出现过的句子或词组。`;
+
+async function generateShillReaction(
+  won: boolean,
+  netAmount: number,
+  recentMessages: string[],
+): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (apiKey) {
     try {
+      const persona = pickRandom(SHILL_PERSONAS);
       const outcome = won
         ? `这局赢了 ${netAmount} 积分`
         : `这局输了 ${Math.abs(netAmount)} 积分`;
+      const recentCtx = recentMessages.length > 0
+        ? `\n\n聊天室最近出现过的句子（你必须避开，绝对不能重复这些内容）：\n${recentMessages.map(m => `- ${m}`).join("\n")}`
+        : "";
+      const systemPrompt = `${persona.prompt}\n\n${DEEPSEEK_BASE_RULES}${recentCtx}`;
+
       const resp = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model: "deepseek-chat",
           max_tokens: 50,
+          temperature: 0.9,
+          presence_penalty: 0.6,
           messages: [
-            { role: "system", content: DEEPSEEK_SYSTEM_PROMPT },
-            { role: "user", content: `${outcome}，发一条消息。` },
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `${outcome}，发一条消息。只输出一句话，不要解释。` },
           ],
         }),
       });
       if (resp.ok) {
         const data = await resp.json() as any;
         const text = (data.choices?.[0]?.message?.content as string | undefined)?.trim();
-        if (text && text.length >= 2 && text.length <= 50) return text;
+        if (text && text.length >= 2 && text.length <= 60) return text;
       }
     } catch {
       // fallthrough to canned
@@ -1325,6 +1358,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // feeling much more human than reacting every round.
         if (Math.random() > 0.30) return;
 
+        // Fetch last 10 user messages from this room to avoid repetition
+        const recentMsgs = await storage.getMessages(req.params.id, 10);
+        const recentTexts = recentMsgs
+          .filter(m => m.type === "user" && m.content)
+          .map(m => m.content as string)
+          .slice(-10);
+
         // Shuffle shills and schedule staggered reactions (~25% chance each per shill)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
         let delayMs = 2000 + Math.floor(Math.random() * 3000); // 2-5s after round closes
@@ -1338,7 +1378,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
           setTimeout(async () => {
             try {
-              const reaction = await generateShillReaction(won, net);
+              const reaction = await generateShillReaction(won, net, recentTexts);
               const shill = await storage.getUser(uid);
               if (!shill) return;
               const reactMsg = await storage.createMessage({
