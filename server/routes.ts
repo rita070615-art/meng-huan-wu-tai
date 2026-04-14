@@ -2276,6 +2276,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     ws.on("pong", () => { client.isAlive = true; client.lastActivity = Date.now(); });
 
+    ws.on("message", (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "PING") {
+          client.isAlive = true;
+          client.lastActivity = Date.now();
+        }
+      } catch {}
+    });
+
     ws.on("error", () => {
       const idx = wsClients.indexOf(client);
       if (idx !== -1) wsClients.splice(idx, 1);

@@ -59,6 +59,7 @@ export default function RoomPage() {
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsDestroyedRef = useRef(false);
   const bankerDismissedRef = useRef(false);
+  const [wsConnected, setWsConnected] = useState(true);
 
   const { data: room } = useQuery<Room>({ queryKey: [`/api/rooms/${roomId}`], enabled: !!roomId });
   const { data: messages, isLoading: msgsLoading, error: msgsError } = useQuery<Message[]>({
@@ -76,7 +77,7 @@ export default function RoomPage() {
   const { data: betRoundData } = useQuery<BetRoundWithBets | null>({
     queryKey: [`/api/rooms/${roomId}/bet-round`],
     enabled: !!roomId,
-    refetchInterval: 15000,
+    refetchInterval: 5000,
   });
   const { data: roomBetsData } = useQuery<Bet[]>({
     queryKey: [`/api/rooms/${roomId}/bets`],
@@ -262,6 +263,15 @@ export default function RoomPage() {
       } catch {}
     };
 
+    let retryDelay = 500;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+
+    const syncState = () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/bet-round`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}/messages`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/rooms/${roomId}`] });
+    };
+
     const connect = () => {
       if (wsDestroyedRef.current) return;
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -270,13 +280,25 @@ export default function RoomPage() {
       );
       wsRef.current = ws;
 
-      ws.onopen = () => { retryDelay = 1000; };
+      ws.onopen = () => {
+        retryDelay = 500;
+        setWsConnected(true);
+        syncState();
+        if (pingTimer) clearInterval(pingTimer);
+        pingTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "PING" }));
+          }
+        }, 20000);
+      };
       ws.onmessage = handleMessage;
       ws.onerror = () => ws.close();
       ws.onclose = () => {
+        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+        setWsConnected(false);
         if (wsDestroyedRef.current) return;
         wsReconnectTimer.current = setTimeout(() => {
-          retryDelay = Math.min(retryDelay * 1.5, 10000);
+          retryDelay = Math.min(retryDelay * 1.5, 3000);
           connect();
         }, retryDelay);
       };
@@ -284,9 +306,24 @@ export default function RoomPage() {
 
     connect();
 
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+          if (wsReconnectTimer.current) { clearTimeout(wsReconnectTimer.current); wsReconnectTimer.current = null; }
+          retryDelay = 500;
+          connect();
+        }
+        syncState();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       wsDestroyedRef.current = true;
       if (wsReconnectTimer.current) clearTimeout(wsReconnectTimer.current);
+      if (pingTimer) clearInterval(pingTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       wsRef.current?.close();
     };
   }, [roomId, user]);
@@ -1182,6 +1219,13 @@ export default function RoomPage() {
             <div className="px-3 py-2 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 text-center flex items-center justify-center gap-1.5">
               <MicOff className="w-3.5 h-3.5" />
               管理员已开启全体禁言
+            </div>
+          )}
+
+          {!wsConnected && (
+            <div className="px-3 py-1.5 bg-red-500/15 border-b border-red-500/30 text-xs text-red-400 text-center flex items-center justify-center gap-1.5 animate-pulse">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" />
+              连接已断开，正在重连…
             </div>
           )}
 
