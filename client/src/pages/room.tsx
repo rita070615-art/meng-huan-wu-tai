@@ -77,7 +77,7 @@ export default function RoomPage() {
   const { data: betRoundData } = useQuery<BetRoundWithBets | null>({
     queryKey: [`/api/rooms/${roomId}/bet-round`],
     enabled: !!roomId,
-    refetchInterval: 5000,
+    refetchInterval: 1000,
   });
   const { data: roomBetsData } = useQuery<Bet[]>({
     queryKey: [`/api/rooms/${roomId}/bets`],
