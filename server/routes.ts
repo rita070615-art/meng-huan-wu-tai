@@ -1320,11 +1320,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
 
-        // Shuffle shills and schedule staggered reactions (~50% chance each)
+        // Round-level gate: only ~30% of rounds trigger any reactions at all.
+        // This makes shills stay silent for several rounds then occasionally comment,
+        // feeling much more human than reacting every round.
+        if (Math.random() > 0.30) return;
+
+        // Shuffle shills and schedule staggered reactions (~25% chance each per shill)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
         let delayMs = 2000 + Math.floor(Math.random() * 3000); // 2-5s after round closes
         for (const uid of shillIds) {
-          if (Math.random() < 0.5) continue; // ~50% chance of reacting
+          if (Math.random() > 0.25) continue; // ~25% chance per shill
           const info = byUser.get(uid)!;
           const net = info.totalReceived - info.totalStake;
           const won = net > 0;
