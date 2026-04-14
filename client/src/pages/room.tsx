@@ -154,8 +154,6 @@ export default function RoomPage() {
     if (!roomId || !user) return;
     wsDestroyedRef.current = false;
 
-    let retryDelay = 1000;
-
     const handleMessage = (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
