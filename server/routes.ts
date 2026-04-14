@@ -259,27 +259,34 @@ async function generateShillReaction(
         : "";
       const systemPrompt = `${persona.prompt}\n\n${DEEPSEEK_BASE_RULES}${recentCtx}`;
 
+      const reqBody = {
+        model: "deepseek-chat",
+        max_tokens: 50,
+        temperature: 0.9,
+        presence_penalty: 0.6,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `${outcome}，发一条消息。只输出一句话，不要解释。` },
+        ],
+      };
+      console.log(`[AutoReact] calling DeepSeek for persona="${persona.name}", outcome="${outcome}"`);
       const resp = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model: "deepseek-chat",
-          max_tokens: 50,
-          temperature: 0.9,
-          presence_penalty: 0.6,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `${outcome}，发一条消息。只输出一句话，不要解释。` },
-          ],
-        }),
+        body: JSON.stringify(reqBody),
       });
       if (resp.ok) {
         const data = await resp.json() as any;
         const text = (data.choices?.[0]?.message?.content as string | undefined)?.trim();
+        console.log(`[AutoReact] DeepSeek raw reply: "${text}"`);
         if (text && text.length >= 2 && text.length <= 60) return text;
+        console.log(`[AutoReact] reply rejected (length out of 2-60 range), falling back to canned.`);
+      } else {
+        const errText = await resp.text().catch(() => "(unreadable)");
+        console.error(`[AutoReact] DeepSeek API error ${resp.status}: ${errText}`);
       }
-    } catch {
-      // fallthrough to canned
+    } catch (err) {
+      console.error("[AutoReact] DeepSeek fetch exception:", err);
     }
   }
   // Canned fallback
@@ -1328,35 +1335,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     (async () => {
       try {
         const botCfg = await storage.getBotSettings();
-        if (!(botCfg as any).autoReactEnabled) return;
-
-        // Build map: shillId → net P&L for this round
-        const shillSet = new Set((await storage.getShillUsers()).map(s => s.id));
-        const shillBets = roundBetsChron.filter(b => shillSet.has(b.userId));
-        if (shillBets.length === 0) return;
-
-        // Group by userId
-        const byUser = new Map<string, { totalStake: number; totalReceived: number; roomId: string; username: string }>();
-        for (const b of shillBets) {
-          const existing = byUser.get(b.userId);
-          const received = betPayouts.get(b.id) ?? 0;
-          if (existing) {
-            existing.totalStake += b.amount;
-            existing.totalReceived += received;
-          } else {
-            byUser.set(b.userId, {
-              totalStake: b.amount,
-              totalReceived: received,
-              roomId: req.params.id,
-              username: b.nickname || b.username,
-            });
-          }
+        if (!(botCfg as any).autoReactEnabled) {
+          console.log("[AutoReact] disabled via bot settings, skipping.");
+          return;
         }
 
-        // Round-level gate: only ~30% of rounds trigger any reactions at all.
-        // This makes shills stay silent for several rounds then occasionally comment,
-        // feeling much more human than reacting every round.
-        if (Math.random() > 0.30) return;
+        const allShills = await storage.getShillUsers();
+        if (allShills.length === 0) {
+          console.log("[AutoReact] no shills configured, skipping.");
+          return;
+        }
+
+        // Round-level gate: ~65% chance any reaction happens this round
+        const roundRoll = Math.random();
+        if (roundRoll > 0.65) {
+          console.log(`[AutoReact] round gate failed (${roundRoll.toFixed(2)} > 0.65), silent round.`);
+          return;
+        }
+        console.log(`[AutoReact] round gate passed (${roundRoll.toFixed(2)}), processing ${allShills.length} shills…`);
+
+        // Build map: shillId → net P&L for this round (from actual bets)
+        const shillSet = new Set(allShills.map(s => s.id));
+        const shillBets = roundBetsChron.filter(b => shillSet.has(b.userId));
+
+        const byUser = new Map<string, { totalStake: number; totalReceived: number; won: boolean; net: number }>();
+
+        if (shillBets.length > 0) {
+          // Use real bet P&L
+          for (const b of shillBets) {
+            const existing = byUser.get(b.userId);
+            const received = betPayouts.get(b.id) ?? 0;
+            if (existing) {
+              existing.totalStake += b.amount;
+              existing.totalReceived += received;
+            } else {
+              byUser.set(b.userId, { totalStake: b.amount, totalReceived: received, won: false, net: 0 });
+            }
+          }
+          // Compute won/net
+          for (const [uid, info] of byUser) {
+            info.net = info.totalReceived - info.totalStake;
+            info.won = info.net > 0;
+          }
+          console.log(`[AutoReact] ${byUser.size} shills had bets this round.`);
+        } else {
+          // Shills didn't bet — synthesise a random reaction based on round outcome
+          // Randomly assign each shill a "won" status (50/50 spectator reaction)
+          console.log("[AutoReact] no shill bets found; using spectator mode (random win/loss).");
+          for (const shill of allShills) {
+            const won = Math.random() > 0.5;
+            const net = won ? Math.floor(Math.random() * 3000 + 500) : -Math.floor(Math.random() * 3000 + 500);
+            byUser.set(shill.id, { totalStake: 0, totalReceived: 0, won, net });
+          }
+        }
 
         // Fetch last 10 user messages from this room to avoid repetition
         const recentMsgs = await storage.getMessages(req.params.id, 10);
@@ -1365,37 +1396,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           .map(m => m.content as string)
           .slice(-10);
 
-        // Shuffle shills and schedule staggered reactions (~25% chance each per shill)
+        // Per-shill gate: 60% chance each shill speaks (staggered 2–5s apart)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
-        let delayMs = 2000 + Math.floor(Math.random() * 3000); // 2-5s after round closes
+        let delayMs = 1500 + Math.floor(Math.random() * 2000);
+        let scheduled = 0;
         for (const uid of shillIds) {
-          if (Math.random() > 0.25) continue; // ~25% chance per shill
+          const shillRoll = Math.random();
+          if (shillRoll > 0.60) {
+            console.log(`[AutoReact] shill ${uid} gate failed (${shillRoll.toFixed(2)} > 0.60), stays quiet.`);
+            continue;
+          }
           const info = byUser.get(uid)!;
-          const net = info.totalReceived - info.totalStake;
-          const won = net > 0;
           const reactDelay = delayMs;
-          delayMs += 2000 + Math.floor(Math.random() * 3000); // stagger next shill 2-5s apart
+          delayMs += 2000 + Math.floor(Math.random() * 3000);
+          scheduled++;
+          console.log(`[AutoReact] scheduling shill ${uid} in ${reactDelay}ms (won=${info.won}, net=${info.net})`);
 
           setTimeout(async () => {
             try {
-              const reaction = await generateShillReaction(won, net, recentTexts);
+              const reaction = await generateShillReaction(info.won, info.net, recentTexts);
               const shill = await storage.getUser(uid);
               if (!shill) return;
+              console.log(`[AutoReact] shill ${shill.username} says: "${reaction}"`);
               const reactMsg = await storage.createMessage({
-                roomId: info.roomId,
+                roomId: req.params.id,
                 userId: shill.id,
                 username: shill.nickname || shill.username,
                 content: reaction,
                 type: "user",
               });
-              broadcast(info.roomId, { type: "MESSAGE", message: reactMsg });
-            } catch {
-              // ignore errors in auto-reaction
+              broadcast(req.params.id, { type: "MESSAGE", message: reactMsg });
+            } catch (err) {
+              console.error("[AutoReact] error posting shill message:", err);
             }
           }, reactDelay);
         }
-      } catch {
-        // ignore errors
+        console.log(`[AutoReact] ${scheduled}/${shillIds.length} shills scheduled to speak this round.`);
+      } catch (err) {
+        console.error("[AutoReact] unexpected error:", err);
       }
     })();
 
