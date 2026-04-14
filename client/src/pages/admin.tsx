@@ -1537,11 +1537,11 @@ function BotAdmin() {
                         onChange={(e) => setBetRangeMax(e.target.value)}
                         className="h-6 text-xs w-20 px-2"
                       />
-                      <button type="submit" className="text-green-500 hover:text-green-400" data-testid={`button-save-shill-bet-range-${u.id}`}>
-                        <Check className="w-3.5 h-3.5" />
+                      <button type="submit" className="text-green-500 hover:text-green-400 p-1" data-testid={`button-save-shill-bet-range-${u.id}`}>
+                        <Check className="w-5 h-5" />
                       </button>
-                      <button type="button" onClick={() => setEditingBetRangeId(null)} className="text-muted-foreground hover:text-foreground">
-                        <X className="w-3.5 h-3.5" />
+                      <button type="button" onClick={() => setEditingBetRangeId(null)} className="text-muted-foreground hover:text-foreground p-1">
+                        <X className="w-5 h-5" />
                       </button>
                     </form>
                   ) : (
