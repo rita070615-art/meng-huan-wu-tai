@@ -896,6 +896,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
 
     // Auto-bet: trigger shill accounts with staggered random delays to mimic real users
+    // Betting and AI-speech are fully decoupled: bets fire early, speech fires later independently.
     try {
       const botCfg = await storage.getBotSettings();
       if (botCfg.enabled) {
@@ -906,8 +907,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const shuffled = [...shills].sort(() => Math.random() - 0.5);
         // Shill bet window from bot config (seconds → ms)
         const shillMinMs = Math.max(1000, ((botCfg as any).shillMinDelaySec ?? 5) * 1000);
-        const shillMaxMs = Math.max(shillMinMs + 1000, ((botCfg as any).shillMaxDelaySec ?? 90) * 1000);
-        // Assign each shill a unique random delay within the configured window
+        const configMaxMs = Math.max(shillMinMs + 1000, ((botCfg as any).shillMaxDelaySec ?? 90) * 1000);
+        // When countdown is active: cap bet window to first 40% of countdown (max 8s ceiling),
+        // so all shills place their bets well before the round closes.
+        // Amount proportions are unchanged — only the timing window is compressed.
+        const shillMaxMs = countdownSeconds
+          ? Math.max(shillMinMs + 500, Math.min(configMaxMs, Math.max(shillMinMs + 500, countdownSeconds * 1000 * 0.4), 8000))
+          : configMaxMs;
+        console.log(`[AutoBet] bet window: ${shillMinMs}ms–${shillMaxMs}ms (countdown=${countdownSeconds}s, configMax=${configMaxMs}ms)`);
+        // Assign each shill a unique random delay within the window
         let usedDelays: number[] = [];
         for (const shill of shuffled) {
           // Pick a delay not too close to any already used
@@ -916,7 +924,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           do {
             delay = Math.floor(Math.random() * (shillMaxMs - shillMinMs)) + shillMinMs;
             attempts++;
-          } while (usedDelays.some(d => Math.abs(d - delay) < 3000) && attempts < 20);
+          } while (usedDelays.some(d => Math.abs(d - delay) < 1500) && attempts < 20);
           usedDelays.push(delay);
 
           const shillId = shill.id;
@@ -1396,9 +1404,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           .map(m => m.content as string)
           .slice(-10);
 
-        // Per-shill gate: 60% chance each shill speaks (staggered 2–5s apart)
+        // Per-shill gate: 60% chance each shill speaks (staggered 1–3s apart for fast rounds)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
-        let delayMs = 1500 + Math.floor(Math.random() * 2000);
+        let delayMs = 500 + Math.floor(Math.random() * 1000); // first shill speaks 0.5–1.5s after close
         let scheduled = 0;
         for (const uid of shillIds) {
           const shillRoll = Math.random();
@@ -1408,7 +1416,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
           const info = byUser.get(uid)!;
           const reactDelay = delayMs;
-          delayMs += 2000 + Math.floor(Math.random() * 3000);
+          delayMs += 1000 + Math.floor(Math.random() * 2000); // subsequent shills 1–3s apart
           scheduled++;
           console.log(`[AutoReact] scheduling shill ${uid} in ${reactDelay}ms (won=${info.won}, net=${info.net})`);
 
