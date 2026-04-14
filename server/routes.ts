@@ -757,7 +757,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const stillActive = await storage.getActiveBetRound(req.params.id);
           if (stillActive && stillActive.id === round.id && stillActive.status === "open") {
             const paused = await storage.pauseBetRound(round.id);
-            const cdMsg = await storage.createMessage({ roomId: req.params.id, content: `⏱️ 倒计时结束，已自动暂停下注`, type: "system" });
+            const cdMsg = await storage.createMessage({ roomId: req.params.id, content: `⏱️ 倒计时结束，暂停点餐`, type: "system" });
             broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: paused, reason: "countdown" });
             broadcast(req.params.id, { type: "MESSAGE", message: cdMsg });
           }
