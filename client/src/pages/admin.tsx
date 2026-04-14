@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import type { Room, BetRound, BetOption, BotSettings } from "@shared/schema";
 
-type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean; shillRoomId: string | null };
+type AdminUser = { id: string; username: string; nickname: string | null; balance: number; role: string; notes: string; banned: boolean; muted: boolean; isShill: boolean; shillRoomId: string | null; shillMinBet: number | null; shillMaxBet: number | null };
 type RoomWithBet = Room & { hasActiveBet: boolean };
 type BetRoundWithBets = BetRound & { bets: any[]; options: BetOption[] };
 
@@ -1235,6 +1235,20 @@ function BotAdmin() {
   const [editingBalanceId, setEditingBalanceId] = useState<{ id: string; mode: "add" | "sub" } | null>(null);
   const [editingBalanceValue, setEditingBalanceValue] = useState("");
   const [newShillName, setNewShillName] = useState("");
+  const [editingBetRangeId, setEditingBetRangeId] = useState<string | null>(null);
+  const [betRangeMin, setBetRangeMin] = useState("");
+  const [betRangeMax, setBetRangeMax] = useState("");
+
+  const shillBetRangeMutation = useMutation({
+    mutationFn: ({ id, shillMinBet, shillMaxBet }: { id: string; shillMinBet: number | null; shillMaxBet: number | null }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}/shill-bet-range`, { shillMinBet, shillMaxBet }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setEditingBetRangeId(null);
+      toast({ title: "下注区间已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
+  });
 
   const createShillMutation = useMutation({
     mutationFn: (name: string) => apiRequest("POST", "/api/admin/create-shill", { name }),
@@ -1496,6 +1510,71 @@ function BotAdmin() {
                       </div>
                     )}
                   </div>
+                  {/* Per-shill bet range */}
+                  {editingBetRangeId === u.id ? (
+                    <form
+                      className="flex items-center gap-1 mt-1 flex-wrap"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const mn = betRangeMin ? parseInt(betRangeMin) : null;
+                        const mx = betRangeMax ? parseInt(betRangeMax) : null;
+                        if ((mn && isNaN(mn)) || (mx && isNaN(mx))) return;
+                        if (mn && mx && mx < mn) { toast({ title: "最大值不能小于最小值", variant: "destructive" }); return; }
+                        shillBetRangeMutation.mutate({ id: u.id, shillMinBet: mn, shillMaxBet: mx });
+                      }}
+                    >
+                      <span className="text-xs text-muted-foreground shrink-0">区间：</span>
+                      <Input
+                        data-testid={`input-shill-bet-min-${u.id}`}
+                        type="number" min={1} placeholder="最小" value={betRangeMin}
+                        onChange={(e) => setBetRangeMin(e.target.value)}
+                        className="h-6 text-xs w-20 px-2"
+                      />
+                      <span className="text-muted-foreground text-xs">—</span>
+                      <Input
+                        data-testid={`input-shill-bet-max-${u.id}`}
+                        type="number" min={1} placeholder="最大" value={betRangeMax}
+                        onChange={(e) => setBetRangeMax(e.target.value)}
+                        className="h-6 text-xs w-20 px-2"
+                      />
+                      <button type="submit" className="text-green-500 hover:text-green-400" data-testid={`button-save-shill-bet-range-${u.id}`}>
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" onClick={() => setEditingBetRangeId(null)} className="text-muted-foreground hover:text-foreground">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {u.shillMinBet || u.shillMaxBet
+                          ? <span className="text-purple-400 font-medium">区间 {u.shillMinBet?.toLocaleString() ?? '?'} ~ {u.shillMaxBet?.toLocaleString() ?? '?'}</span>
+                          : <span className="text-muted-foreground/60">全局区间</span>
+                        }
+                      </span>
+                      <button
+                        data-testid={`button-edit-shill-bet-range-${u.id}`}
+                        onClick={() => {
+                          setEditingBetRangeId(u.id);
+                          setBetRangeMin(u.shillMinBet ? String(u.shillMinBet) : "");
+                          setBetRangeMax(u.shillMaxBet ? String(u.shillMaxBet) : "");
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                      >
+                        设置
+                      </button>
+                      {(u.shillMinBet || u.shillMaxBet) && (
+                        <button
+                          data-testid={`button-clear-shill-bet-range-${u.id}`}
+                          onClick={() => shillBetRangeMutation.mutate({ id: u.id, shillMinBet: null, shillMaxBet: null })}
+                          className="text-xs text-muted-foreground/50 hover:text-destructive"
+                          title="清除专属区间，使用全局区间"
+                        >
+                          清除
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <Button
                   size="sm"

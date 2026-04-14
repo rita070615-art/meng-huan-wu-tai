@@ -14,6 +14,8 @@ export const users = pgTable("users", {
   muted: boolean("muted").notNull().default(false),
   isShill: boolean("is_shill").notNull().default(false),
   shillRoomId: varchar("shill_room_id", { length: 36 }),
+  shillMinBet: integer("shill_min_bet"),
+  shillMaxBet: integer("shill_max_bet"),
   registrationIp: text("registration_ip").default(""),
   totpSecret: text("totp_secret"),
   totpEnabled: boolean("totp_enabled").notNull().default(false),

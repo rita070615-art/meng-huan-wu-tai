@@ -105,6 +105,10 @@ app.use((req, res, next) => {
       ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS shill_min_delay_sec INTEGER NOT NULL DEFAULT 5;
       ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS shill_max_delay_sec INTEGER NOT NULL DEFAULT 90;
     `);
+    await migrationPool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS shill_min_bet INTEGER;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS shill_max_bet INTEGER;
+    `);
     await migrationPool.end();
     console.log("Schema migrations applied.");
   } catch (e) {

@@ -794,6 +794,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const shillId = shill.id;
           const shillUsername = shill.username;
           const shillBalance = shill.balance;
+          const shillMinBet = (shill as any).shillMinBet ?? null;
+          const shillMaxBet = (shill as any).shillMaxBet ?? null;
           const roomId = req.params.id;
           const roundId = round.id;
           const optionsList = options as Array<{ key: string }>;
@@ -804,8 +806,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               const activeRound = await storage.getActiveBetRound(roomId);
               if (!activeRound || activeRound.id !== roundId || activeRound.status !== "open") return;
 
-              const minStep = Math.max(1, Math.ceil(botCfg.minAmount / 50));
-              const maxStep = Math.max(minStep, Math.floor(botCfg.maxAmount / 50));
+              const effectiveMin = shillMinBet ?? botCfg.minAmount;
+              const effectiveMax = shillMaxBet ?? botCfg.maxAmount;
+              const minStep = Math.max(1, Math.ceil(effectiveMin / 50));
+              const maxStep = Math.max(minStep, Math.floor(effectiveMax / 50));
               const amount = (minStep + Math.floor(Math.random() * (maxStep - minStep + 1))) * 50;
               if (shillBalance < amount) {
                 broadcastToRoomAdmins(roomId, {
@@ -1501,7 +1505,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ADMIN
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const allUsers = await storage.getAllUsers();
-    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, muted: u.muted, isShill: u.isShill, shillRoomId: (u as any).shillRoomId ?? null })));
+    res.json(allUsers.map((u) => ({ id: u.id, username: u.username, nickname: u.nickname, balance: u.balance, role: u.role, notes: u.notes || "", banned: u.banned, muted: u.muted, isShill: u.isShill, shillRoomId: (u as any).shillRoomId ?? null, shillMinBet: (u as any).shillMinBet ?? null, shillMaxBet: (u as any).shillMaxBet ?? null })));
   });
 
   app.patch("/api/admin/users/:id/balance", requireAdmin, async (req, res) => {
@@ -1710,6 +1714,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
     const user = await storage.setUserShillRoom(req.params.id, parsed.data.shillRoomId);
     res.json({ id: user!.id, username: user!.username });
+  });
+
+  app.patch("/api/admin/users/:id/shill-bet-range", requireAdmin, async (req, res) => {
+    const schema = z.object({
+      shillMinBet: z.number().int().min(1).nullable(),
+      shillMaxBet: z.number().int().min(1).nullable(),
+    }).refine(d => !d.shillMinBet || !d.shillMaxBet || d.shillMaxBet >= d.shillMinBet, { message: "最大值不能小于最小值" });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const target = await storage.getUser(req.params.id);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (!target.isShill) return res.status(400).json({ error: "用户不是托" });
+
+    const result = await db.update(users).set({
+      shillMinBet: parsed.data.shillMinBet,
+      shillMaxBet: parsed.data.shillMaxBet,
+    }).where(eq(users.id, req.params.id)).returning();
+    const u = result[0];
+    res.json({ id: u.id, shillMinBet: u.shillMinBet, shillMaxBet: u.shillMaxBet });
   });
 
   // BOT SETTINGS
