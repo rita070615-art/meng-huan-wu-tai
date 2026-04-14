@@ -1729,7 +1729,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       webhookUrl2: z.string().max(500).optional(),
       webhookUrl3: z.string().max(500).optional(),
     }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" })
-      .refine(d => !d.shillMinDelaySec || !d.shillMaxDelaySec || d.shillMaxDelaySec >= d.shillMinDelaySec, { message: "最大延迟不能小于最小延迟" });
+      .refine(d => !d.shillMinDelaySec || !d.shillMaxDelaySec || d.shillMaxDelaySec >= d.shillMinDelaySec, { message: "最晚时间不能早于最早时间" });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
     const settings = await storage.updateBotSettings(parsed.data);

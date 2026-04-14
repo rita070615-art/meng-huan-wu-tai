@@ -1294,11 +1294,11 @@ function BotAdmin() {
     const sMinD = shillMinDelay ? parseInt(shillMinDelay) : ((settings as any).shillMinDelaySec ?? 5);
     const sMaxD = shillMaxDelay ? parseInt(shillMaxDelay) : ((settings as any).shillMaxDelaySec ?? 90);
     if (isNaN(sMinD) || isNaN(sMaxD) || sMinD < 1 || sMaxD < 1) {
-      toast({ title: "请输入有效托下注时间", variant: "destructive" });
+      toast({ title: "请输入有效托下注区间", variant: "destructive" });
       return;
     }
     if (sMaxD < sMinD) {
-      toast({ title: "最大延迟不能小于最小延迟", variant: "destructive" });
+      toast({ title: "最晚时间不能早于最早时间", variant: "destructive" });
       return;
     }
     updateSettingsMutation.mutate({ enabled: settings.enabled, minAmount: min, maxAmount: max, shillMinDelaySec: sMinD, shillMaxDelaySec: sMaxD });
@@ -1386,10 +1386,10 @@ function BotAdmin() {
             </div>
 
             <div className="space-y-3">
-              <p className="text-sm font-medium">托下注时间段（秒）</p>
+              <p className="text-sm font-medium">托下注区间（秒）</p>
               <div className="flex items-center gap-3">
                 <div className="flex-1">
-                  <Label className="text-xs text-muted-foreground mb-1 block">开始（秒后）</Label>
+                  <Label className="text-xs text-muted-foreground mb-1 block">最早（秒后）</Label>
                   <Input
                     data-testid="input-shill-min-delay"
                     type="number"
@@ -1403,7 +1403,7 @@ function BotAdmin() {
                 </div>
                 <span className="text-muted-foreground mt-5">—</span>
                 <div className="flex-1">
-                  <Label className="text-xs text-muted-foreground mb-1 block">结束（秒内）</Label>
+                  <Label className="text-xs text-muted-foreground mb-1 block">最晚（秒内）</Label>
                   <Input
                     data-testid="input-shill-max-delay"
                     type="number"
@@ -1427,7 +1427,7 @@ function BotAdmin() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                托账号将在开始下注后 {(settings as any).shillMinDelaySec ?? 5}s ~ {(settings as any).shillMaxDelaySec ?? 90}s 内随机时间下注
+                托账号将在开局第 {(settings as any).shillMinDelaySec ?? 5}s 到第 {(settings as any).shillMaxDelaySec ?? 90}s 之间的区间内随机下注
               </p>
             </div>
           </div>
