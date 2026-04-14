@@ -47,6 +47,9 @@ export default function RoomPage() {
   const [optionRatios, setOptionRatios] = useState<Record<string, string>>({ A: "", B: "", C: "", D: "" });
   const [cancelRoundConfirm, setCancelRoundConfirm] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [countdownSecs, setCountdownSecs] = useState(""); // admin input: seconds for countdown
+  const [countdownEndsAt, setCountdownEndsAt] = useState<number | null>(null); // live: epoch ms when countdown ends
+  const [countdownLeft, setCountdownLeft] = useState<number | null>(null); // live: seconds remaining
   const messageInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -173,12 +176,16 @@ export default function RoomPage() {
         if (data.type === "BETS_UPDATED" && data.bets) {
           setLiveBets(data.bets.slice(0, 50));
         }
+        if (data.type === "COUNTDOWN_STARTED") {
+          setCountdownEndsAt(data.endsAt);
+        }
         if (data.type === "BET_ROUND_STARTED") {
           setLiveRound({ ...data.round, bets: [] });
           setLiveBets([]);
           setSelectedOptions(new Set());
           setOptionPoints({});
           setDoubleMode(false);
+          setCountdownEndsAt(null); setCountdownLeft(null);
           if (data.message) setLiveMessages((prev) => {
             if (prev.some(m => m.id === data.message.id)) return prev;
             return [...prev, data.message];
@@ -233,6 +240,7 @@ export default function RoomPage() {
         if (data.type === "BET_ROUND_PAUSED") {
           setLiveRound((prev) => prev ? { ...prev, status: "paused" } : null);
           setPendingBet(null);
+          setCountdownEndsAt(null); setCountdownLeft(null);
         }
         if (data.type === "BET_ROUND_RESUMED") {
           setLiveRound((prev) => prev ? { ...prev, status: "open" } : null);
@@ -286,6 +294,19 @@ export default function RoomPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [liveMessages]);
+
+  // Live countdown tick
+  useEffect(() => {
+    if (!countdownEndsAt) { setCountdownLeft(null); return; }
+    const tick = () => {
+      const left = Math.max(0, Math.round((countdownEndsAt - Date.now()) / 1000));
+      setCountdownLeft(left);
+      if (left === 0) setCountdownEndsAt(null);
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [countdownEndsAt]);
 
   const sendMutation = useMutation({
     mutationFn: (content: string) => apiRequest("POST", `/api/rooms/${roomId}/messages`, { content }),
@@ -342,7 +363,7 @@ export default function RoomPage() {
   });
 
   const startRoundMutation = useMutation({
-    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; exitPumpRate?: number; options?: object }) =>
+    mutationFn: (params?: { bankerUserId?: string; bankerNickname?: string; bankerOption?: string; bankerMaxBet?: number; carryOver?: number; pumpRate?: number; playerPumpRate?: number; exitPumpRate?: number; options?: object; countdownSeconds?: number }) =>
       apiRequest("POST", `/api/rooms/${roomId}/bet-round`, params || {}),
     onSuccess: () => { setBankerUserId(""); setBankerOption(""); setBankerMaxBet(""); setCarryOver(""); setAddToLimit(""); },
     onError: (e: Error) => toast({ title: "开始失败", description: e.message, variant: "destructive" }),
@@ -834,6 +855,17 @@ export default function RoomPage() {
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <span className="text-[10px] text-muted-foreground">⏱️倒计时截止（秒）</span>
+                    <Input
+                      data-testid="input-countdown-secs-continue"
+                      type="number" min={5} max={600}
+                      value={countdownSecs}
+                      onChange={e => setCountdownSecs(e.target.value)}
+                      placeholder="留空不限"
+                      className="h-6 text-xs w-20 px-1.5"
+                    />
+                  </div>
                   <Button
                     size="sm"
                     className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
@@ -852,8 +884,10 @@ export default function RoomPage() {
                         playerPumpRate: activePlayerPumpRate ? Number(activePlayerPumpRate) : undefined,
                         exitPumpRate: activeExitPumpRate ? Number(activeExitPumpRate) : undefined,
                         options: defaultOptsNow,
+                        countdownSeconds: countdownSecs ? Number(countdownSecs) : undefined,
                       });
                       setOptionRatios({ A: "", B: "", C: "", D: "" });
+                      setCountdownSecs("");
                       setBankerOption("");
                     }}
                   >
@@ -968,6 +1002,19 @@ export default function RoomPage() {
                     ))}
                   </div>
                 </div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">⏱️倒计时截止（秒，留空不限）</span>
+                    <Input
+                      data-testid="input-countdown-secs"
+                      type="number" min={5} max={600}
+                      value={countdownSecs}
+                      onChange={e => setCountdownSecs(e.target.value)}
+                      placeholder="如 30"
+                      className="h-6 text-xs w-16 px-1.5"
+                    />
+                  </div>
+                </div>
                 <Button
                   size="sm"
                   className="h-7 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
@@ -998,11 +1045,13 @@ export default function RoomPage() {
                       playerPumpRate: playerPumpRate ? Number(playerPumpRate) : undefined,
                       exitPumpRate: exitPumpRate ? Number(exitPumpRate) : undefined,
                       options: defaultOpts,
+                      countdownSeconds: countdownSecs ? Number(countdownSecs) : undefined,
                     });
                     setOptionRatios({ A: "", B: "", C: "", D: "" });
                     setPumpRate("");
                     setPlayerPumpRate("");
                     setExitPumpRate("");
+                    setCountdownSecs("");
                   }}
                 >
                   <Play className="w-3 h-3 mr-1" />
@@ -1244,7 +1293,13 @@ export default function RoomPage() {
                 <div className="flex items-center gap-2">
                   {currentRound.status === "paused"
                     ? <span className="font-semibold text-amber-500">{capReached ? "点餐订单已满" : "已暂停点餐"}</span>
-                    : <span className="font-semibold text-primary">菜单进行中</span>
+                    : countdownLeft != null && countdownLeft > 0
+                      ? (
+                        <span className="font-bold text-orange-500 flex items-center gap-1 animate-pulse">
+                          ⏱️ 剩余 {countdownLeft}s
+                        </span>
+                      )
+                      : <span className="font-semibold text-primary">菜单进行中</span>
                   }
                   {bankerName && (
                     <span className="text-amber-500 font-medium flex items-center gap-1">
@@ -1260,9 +1315,12 @@ export default function RoomPage() {
                     </span>
                   )}
                 </div>
-                {totalPool > 0 && (
+                {effectiveRoundCap > 0 && (
                   <span className="text-muted-foreground flex items-center gap-1">
-                    总餐量 <span className="font-semibold text-foreground">{totalPool.toLocaleString()}</span>
+                    还可下注
+                    <span className={`font-semibold ${Math.max(0, effectiveRoundCap - totalPool) === 0 ? "text-red-500" : "text-green-500"}`}>
+                      {Math.max(0, effectiveRoundCap - totalPool).toLocaleString()}
+                    </span>
                   </span>
                 )}
               </div>
@@ -1501,8 +1559,11 @@ export default function RoomPage() {
               )}
               {bankerCap > 0 && (
                 <div className="flex items-center justify-between mt-1 text-xs text-muted-foreground">
-                  <span>标庄金额</span>
-                  <span className="font-medium">{effectiveRoundCap.toLocaleString()}</span>
+                  <span>还可下注</span>
+                  <span className={`font-semibold ${Math.max(0, effectiveRoundCap - totalPool) === 0 ? "text-red-500" : "text-green-400"}`}>
+                    {Math.max(0, effectiveRoundCap - totalPool).toLocaleString()}
+                    <span className="font-normal text-muted-foreground ml-1">/ {effectiveRoundCap.toLocaleString()}</span>
+                  </span>
                 </div>
               )}
             </div>

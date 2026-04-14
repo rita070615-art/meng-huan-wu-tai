@@ -1186,6 +1186,8 @@ function BotAdmin() {
   const { toast } = useToast();
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
+  const [shillMinDelay, setShillMinDelay] = useState("");
+  const [shillMaxDelay, setShillMaxDelay] = useState("");
 
   const { data: settings, isLoading: settingsLoading } = useQuery<BotSettings>({
     queryKey: ["/api/admin/bot-settings"],
@@ -1289,7 +1291,17 @@ function BotAdmin() {
       toast({ title: "最大值不能小于最小值", variant: "destructive" });
       return;
     }
-    updateSettingsMutation.mutate({ enabled: settings.enabled, minAmount: min, maxAmount: max });
+    const sMinD = shillMinDelay ? parseInt(shillMinDelay) : ((settings as any).shillMinDelaySec ?? 5);
+    const sMaxD = shillMaxDelay ? parseInt(shillMaxDelay) : ((settings as any).shillMaxDelaySec ?? 90);
+    if (isNaN(sMinD) || isNaN(sMaxD) || sMinD < 1 || sMaxD < 1) {
+      toast({ title: "请输入有效托下注时间", variant: "destructive" });
+      return;
+    }
+    if (sMaxD < sMinD) {
+      toast({ title: "最大延迟不能小于最小延迟", variant: "destructive" });
+      return;
+    }
+    updateSettingsMutation.mutate({ enabled: settings.enabled, minAmount: min, maxAmount: max, shillMinDelaySec: sMinD, shillMaxDelaySec: sMaxD });
   };
 
 
@@ -1370,6 +1382,52 @@ function BotAdmin() {
               </div>
               <p className="text-xs text-muted-foreground">
                 当前区间：{settings.minAmount.toLocaleString()} ~ {settings.maxAmount.toLocaleString()} 积分，每次随机选取
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-medium">托下注时间段（秒）</p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">开始（秒后）</Label>
+                  <Input
+                    data-testid="input-shill-min-delay"
+                    type="number"
+                    min={1}
+                    max={600}
+                    placeholder={String((settings as any).shillMinDelaySec ?? 5)}
+                    value={shillMinDelay}
+                    onChange={(e) => setShillMinDelay(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <span className="text-muted-foreground mt-5">—</span>
+                <div className="flex-1">
+                  <Label className="text-xs text-muted-foreground mb-1 block">结束（秒内）</Label>
+                  <Input
+                    data-testid="input-shill-max-delay"
+                    type="number"
+                    min={1}
+                    max={600}
+                    placeholder={String((settings as any).shillMaxDelaySec ?? 90)}
+                    value={shillMaxDelay}
+                    onChange={(e) => setShillMaxDelay(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  data-testid="button-save-shill-delay"
+                  onClick={handleSaveRange}
+                  disabled={updateSettingsMutation.isPending}
+                  className="mt-5 shrink-0"
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                  保存
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                托账号将在开始下注后 {(settings as any).shillMinDelaySec ?? 5}s ~ {(settings as any).shillMaxDelaySec ?? 90}s 内随机时间下注
               </p>
             </div>
           </div>

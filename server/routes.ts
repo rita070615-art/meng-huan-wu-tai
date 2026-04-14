@@ -12,6 +12,9 @@ import path from "path";
 import fs from "fs";
 import express from "express";
 
+// Server-side countdown timers: roundId → { endsAt (unix ms), timerId }
+const roundCountdowns = new Map<string, { endsAt: number; timerId: ReturnType<typeof setTimeout> }>();
+
 function formatWebhookContent(payload: Record<string, unknown>): string {
   const type = payload.type as string;
   const ts = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Kuala_Lumpur" });
@@ -740,6 +743,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     broadcast(req.params.id, { type: "BET_ROUND_STARTED", round, message: msg });
 
+    // Countdown auto-pause: if countdownSeconds provided, schedule auto-pause
+    const countdownSeconds = req.body.countdownSeconds != null ? Math.max(5, Math.min(600, Number(req.body.countdownSeconds))) : null;
+    if (countdownSeconds) {
+      // Clear any existing countdown for this room
+      const existingCd = roundCountdowns.get(round.id);
+      if (existingCd) { clearTimeout(existingCd.timerId); roundCountdowns.delete(round.id); }
+
+      const endsAt = Date.now() + countdownSeconds * 1000;
+      const timerId = setTimeout(async () => {
+        roundCountdowns.delete(round.id);
+        try {
+          const stillActive = await storage.getActiveBetRound(req.params.id);
+          if (stillActive && stillActive.id === round.id && stillActive.status === "open") {
+            const paused = await storage.pauseBetRound(round.id);
+            const cdMsg = await storage.createMessage({ roomId: req.params.id, content: `⏱️ 倒计时结束，已自动暂停下注`, type: "system" });
+            broadcast(req.params.id, { type: "BET_ROUND_PAUSED", round: paused, reason: "countdown" });
+            broadcast(req.params.id, { type: "MESSAGE", message: cdMsg });
+          }
+        } catch (e) { console.error("Countdown auto-pause error:", e); }
+      }, countdownSeconds * 1000);
+      roundCountdowns.set(round.id, { endsAt, timerId });
+      broadcast(req.params.id, { type: "COUNTDOWN_STARTED", endsAt, roundId: round.id });
+    }
+
     // Auto-bet: trigger shill accounts with staggered random delays to mimic real users
     try {
       const botCfg = await storage.getBotSettings();
@@ -749,14 +776,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const shills = allShills.filter(s => !(s as any).shillRoomId || (s as any).shillRoomId === req.params.id);
         // Shuffle shills so order is random each round
         const shuffled = [...shills].sort(() => Math.random() - 0.5);
-        // Assign each shill a unique random delay (5s–90s), spread out so they don't overlap
+        // Shill bet window from bot config (seconds → ms)
+        const shillMinMs = Math.max(1000, ((botCfg as any).shillMinDelaySec ?? 5) * 1000);
+        const shillMaxMs = Math.max(shillMinMs + 1000, ((botCfg as any).shillMaxDelaySec ?? 90) * 1000);
+        // Assign each shill a unique random delay within the configured window
         let usedDelays: number[] = [];
         for (const shill of shuffled) {
           // Pick a delay not too close to any already used
           let delay: number;
           let attempts = 0;
           do {
-            delay = Math.floor(Math.random() * 85000) + 5000; // 5s–90s in ms
+            delay = Math.floor(Math.random() * (shillMaxMs - shillMinMs)) + shillMinMs;
             attempts++;
           } while (usedDelays.some(d => Math.abs(d - delay) < 3000) && attempts < 20);
           usedDelays.push(delay);
@@ -974,8 +1004,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const playerWins = playerScore > effectiveBankerScore; // Strict greater-than; tie = banker wins
 
       if (playerWins) {
-        const baseRatio = playerScore === 9 ? 3 : 2;
-        const effectiveRatio = baseRatio * doubleMultiplier;
+        // 闲9点翻倍，庄不翻倍: player winning with 9 pts always gives 3× (not affected by doubleMultiplier)
+        // Other player wins get 2× (multiplied by doubleMultiplier if 庄翻倍 is active)
+        const effectiveRatio = playerScore === 9 ? 3 : 2 * doubleMultiplier;
         const gross = bet.amount * effectiveRatio; // Total player receives (including stake)
         const netWin = gross - bet.amount;          // Pure profit above stake (no player-side pump)
         // Cap by remaining available banker fund
@@ -1692,10 +1723,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       enabled: z.boolean(),
       minAmount: z.number().int().min(1),
       maxAmount: z.number().int().min(1),
+      shillMinDelaySec: z.number().int().min(1).max(600).optional(),
+      shillMaxDelaySec: z.number().int().min(1).max(600).optional(),
       webhookUrl1: z.string().max(500).optional(),
       webhookUrl2: z.string().max(500).optional(),
       webhookUrl3: z.string().max(500).optional(),
-    }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" });
+    }).refine(d => d.maxAmount >= d.minAmount, { message: "最大值不能小于最小值" })
+      .refine(d => !d.shillMinDelaySec || !d.shillMaxDelaySec || d.shillMaxDelaySec >= d.shillMinDelaySec, { message: "最大延迟不能小于最小延迟" });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
     const settings = await storage.updateBotSettings(parsed.data);

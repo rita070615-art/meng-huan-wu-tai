@@ -355,7 +355,7 @@ export class DbStorage implements IStorage {
     return inserted[0];
   }
 
-  async updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number; webhookUrl1?: string; webhookUrl2?: string; webhookUrl3?: string }): Promise<BotSettings> {
+  async updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number; shillMinDelaySec?: number; shillMaxDelaySec?: number; webhookUrl1?: string; webhookUrl2?: string; webhookUrl3?: string }): Promise<BotSettings> {
     const existing = await db.select().from(botSettings).limit(1);
     if (existing.length === 0) {
       const inserted = await db.insert(botSettings).values({ id: "default", ...data }).returning();
