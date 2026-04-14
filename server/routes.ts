@@ -203,73 +203,160 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// ── 4 personality archetypes, randomly assigned per reaction ─────────────────
-const SHILL_PERSONAS = [
-  {
-    name: "暴躁老哥",
-    prompt: `你是个脾气暴躁的赌客，满口粗口。赢了狂笑炫耀，输了骂街问候服务器。
-口头禅：操、草、我去、妈的、nb、wdnmd。
-赢了例子："操，我就说！"、"哈哈哈草赢麻了"、"跟老子玩？"。
-输了例子："草泥马！"、"这什么狗走势"、"服了服了，再来"。`,
-  },
-  {
-    name: "技术流",
-    prompt: `你是个爱分析走势的赌客，说话带着伪专业感。
-口头禅：路子、反路、概率、走势、数据、回调。
-赢了例子："走势对了，就这样"、"反路出了，稳"、"概率到了该赢"。
-输了例子："路子不对啊这局"、"走势反了，服"、"下把换个路子"。`,
-  },
-  {
-    name: "悲观鬼",
-    prompt: `你是个天生悲观的赌客，赢了觉得是运气不会长久，输了就想退场怀疑人生。
-口头禅：唉、算了、脑壳疼、熬不住、退了、完了。
-赢了例子："运气好，下把又输回去"、"赢了又咋样唉"、"诶中了？假的吧"。
-输了例子："算了洗洗睡"、"脑壳疼，退了"、"完了完了没法玩了"。`,
-  },
-  {
-    name: "气氛组",
-    prompt: `你是个爱起哄活跃气氛的赌客，说话带节奏，爱发感叹，爱@气氛。
-口头禅：呜呜呜、冲啊、老板大气、哈哈哈哈、6666、awsl。
-赢了例子："冲啊！！！"、"老板大气！！"、"6666 赢了"。
-输了例子："呜呜呜又没了"、"哎哟喂"、"awsl 输光了"。`,
-  },
-];
+// ══════════════════════════════════════════════════════════════════════════════
+// ── Shill Intelligence System ─────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
+// ── Global recent speech pool: last 20 generated lines across ALL shills ──────
+const globalRecentPool: string[] = [];
+function addToRecentPool(text: string) {
+  globalRecentPool.push(text);
+  if (globalRecentPool.length > 20) globalRecentPool.shift();
+}
+
+// ── 3-group attribute system (region × mindset × style) ──────────────────────
+const PERSONA_REGION: Record<string, string> = {
+  "东北话": "说话带东北口音，口头禅：整、贼、老铁、咋、哈哈咋回事、整不了、唠嗑。",
+  "川渝口音": "说话带川渝口音，口头禅：哦豁、巴适、脑壳疼、啥子、造哦、硬是要、扯淡。",
+  "粤语口语": "说话夹带粤语词，可以用：系咁、好惨、唔系、冇、嗯哪、死喇、咁系。",
+  "台湾腔": "说话带台湾腔，多用：真的假的、超级、好棒棒、欸、哦吼、超惨、ㄟ。",
+  "普通话": "用标准口语普通话，感叹词丰富，说话干脆利落。",
+};
+const PERSONA_MINDSET: Record<string, string> = {
+  "豪赌型": "心态豪放，输了想梭哈回来，赢了继续加注，口头禅：梭哈、all in、翻倍压。",
+  "谨慎型": "下注保守，很在意走势，稳字当头，不爱冲动，输了会认真复盘。",
+  "悲观型": "天生悲观，赢了觉得是运气，输了就唉声叹气，总觉得自己倒霉。",
+  "乐天派": "永远乐观，输了无所谓，赢了疯狂庆祝，说话充满正能量爱加感叹号。",
+  "阴阳怪气型": "喜欢夹枪带棒，反话正说，说话带刺，经常阴阳他人和走势。",
+};
+const PERSONA_STYLE: Record<string, string> = {
+  "爱发Emoji": "每句话必须带 1-2 个 emoji（😭🤣🔥💀😤👀🎉💸😅），每次换不同的。",
+  "爱发叠词": "喜欢用叠词，如：急急急、惨惨惨、稳稳稳、哈哈哈哈哈、完了完了完了。",
+  "纯文字": "从不发 emoji，就是纯文字，简短有力，说话最直接。",
+  "爱带标点": "喜欢用感叹号、省略号、问号，如：！！！、……、？？？连用。",
+};
+
+// Per-shill personality cache (randomly assigned once, persists in memory)
+const shillPersonaCache = new Map<string, string[]>();
+function getShillPersona(userId: string): { labels: string[]; prompt: string } {
+  if (!shillPersonaCache.has(userId)) {
+    const regionKey = pickRandom(Object.keys(PERSONA_REGION));
+    const mindsetKey = pickRandom(Object.keys(PERSONA_MINDSET));
+    const styleKey = pickRandom(Object.keys(PERSONA_STYLE));
+    const labels = Math.random() > 0.35
+      ? [regionKey, mindsetKey, styleKey]
+      : [regionKey, mindsetKey];
+    shillPersonaCache.set(userId, labels);
+    console.log(`[Persona] shill ${userId} assigned: ${labels.join(" + ")}`);
+  }
+  const labels = shillPersonaCache.get(userId)!;
+  const allDefs = { ...PERSONA_REGION, ...PERSONA_MINDSET, ...PERSONA_STYLE };
+  const prompt = labels.map(l => allDefs[l]).filter(Boolean).join("\n");
+  return { labels, prompt };
+}
+
+// ── Per-shill win/loss streak tracker ────────────────────────────────────────
+const shillStreakCache = new Map<string, { streak: number; won: boolean; totalNet: number }>();
+function updateShillStreak(userId: string, won: boolean, net: number) {
+  const prev = shillStreakCache.get(userId);
+  if (prev && prev.won === won) {
+    shillStreakCache.set(userId, { streak: prev.streak + 1, won, totalNet: prev.totalNet + net });
+  } else {
+    shillStreakCache.set(userId, { streak: 1, won, totalNet: net });
+  }
+}
+function getStreakContext(userId: string, won: boolean, net: number): string {
+  const info = shillStreakCache.get(userId);
+  const abs = Math.abs(net);
+  if (!info) return won ? `这局赢了 ${abs} 积分` : `这局输了 ${abs} 积分`;
+  if (info.streak >= 3 && info.won && won)
+    return `已连赢 ${info.streak} 把，这局又赢了 ${abs} 积分，感觉要起飞`;
+  if (info.streak >= 3 && !info.won && !won)
+    return `已连输 ${info.streak} 把，这局又输了 ${abs} 积分，心态濒临崩溃`;
+  if (info.streak >= 2 && !info.won && won)
+    return `之前连输 ${info.streak} 把，这局终于翻盘赢了 ${abs} 积分`;
+  if (info.streak >= 2 && info.won && !won)
+    return `连赢之后这局输了 ${abs} 积分，顿感晦气`;
+  return won ? `这局赢了 ${abs} 积分` : `这局输了 ${abs} 积分`;
+}
+
+// ── Per-shill bet personality (determines when they place their bet) ──────────
+type BetPersonality = "急性子" | "跟风型" | "犹豫型" | "观察型";
+const BET_PERSONALITIES: BetPersonality[] = ["急性子", "跟风型", "犹豫型", "观察型"];
+const shillBetPersonalityCache = new Map<string, BetPersonality>();
+function getShillBetPersonality(userId: string): BetPersonality {
+  if (!shillBetPersonalityCache.has(userId)) {
+    const p = pickRandom(BET_PERSONALITIES);
+    shillBetPersonalityCache.set(userId, p);
+    console.log(`[BetPersonality] shill ${userId} assigned: ${p}`);
+  }
+  return shillBetPersonalityCache.get(userId)!;
+}
+// Compute bet delay ms based on personality and countdown duration
+function computeBetDelay(personality: BetPersonality, cdSec: number | null, minMs: number, maxMs: number): number {
+  const jitter = () => Math.floor(Math.random() * 2500 + 500); // 500-3000ms jitter always added
+  if (!cdSec) {
+    // No countdown: use configured window
+    return Math.floor(Math.random() * (maxMs - minMs)) + minMs;
+  }
+  const cdMs = cdSec * 1000;
+  switch (personality) {
+    case "急性子":
+      // First 5s of countdown
+      return Math.min(minMs + jitter(), Math.max(minMs, Math.floor(Math.random() * 4000) + 1000));
+    case "跟风型":
+      // Middle section: 40-65% of countdown
+      return Math.floor(cdMs * 0.40 + Math.random() * cdMs * 0.25) + jitter();
+    case "犹豫型":
+      // Last 5s before countdown ends
+      return Math.max(minMs, cdMs - 5000 + Math.floor(Math.random() * 4000) + jitter() * 0.3);
+    case "观察型":
+    default:
+      // Anywhere in first 80% of countdown
+      return Math.floor(Math.random() * cdMs * 0.80) + minMs + jitter();
+  }
+}
+
+// Per-shill "spoke last round" — these get an extra 3-5s typing-simulation delay
+const shillSpokeLastRound = new Set<string>();
+
+// ── Speech generation ──────────────────────────────────────────────────────────
 const DEEPSEEK_BASE_RULES = `严禁暴露身份：绝对不能提到你是 AI、机器人或程序。
 字数死命令：每句严格控制在 4-15 个字，越短越像在手机上打字。
 禁用书面语：不准说任何礼貌用语或正式表达。
-方言鼓励：可以用方言口音（咋肥事、得行、脑壳疼、造哦、哦豁等）增加真实感。
-原创要求：必须给出风格独特的原创吐槽，不要模仿刚才已经出现的回复内容。
-严禁重复：绝对不能重复聊天室最近出现过的句子或词组。`;
+原创铁律：必须给出完全原创的一句话，绝对不能与禁语库中任何一条在意思、结构或用词上相近。
+方言加分：如有地域属性，请用对应方言词汇增强真实感。`;
 
 async function generateShillReaction(
+  userId: string,
   won: boolean,
   netAmount: number,
-  recentMessages: string[],
 ): Promise<string> {
+  // Build streak-aware situation description
+  const situation = getStreakContext(userId, won, netAmount);
+  // Fetch shill's permanent persona
+  const persona = getShillPersona(userId);
+  // Build forbidden list from global pool
+  const forbidden = globalRecentPool.length > 0
+    ? `\n\n【禁语库 — 以下内容及其近义/变体绝对禁止使用】\n${globalRecentPool.map(m => `- ${m}`).join("\n")}`
+    : "";
+  const systemPrompt = `你是一个真实赌客，拥有以下固定性格特征（必须体现在每句话里）：\n${persona.prompt}\n\n${DEEPSEEK_BASE_RULES}${forbidden}`;
+
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (apiKey) {
     try {
-      const persona = pickRandom(SHILL_PERSONAS);
-      const outcome = won
-        ? `这局赢了 ${netAmount} 积分`
-        : `这局输了 ${Math.abs(netAmount)} 积分`;
-      const recentCtx = recentMessages.length > 0
-        ? `\n\n聊天室最近出现过的句子（你必须避开，绝对不能重复这些内容）：\n${recentMessages.map(m => `- ${m}`).join("\n")}`
-        : "";
-      const systemPrompt = `${persona.prompt}\n\n${DEEPSEEK_BASE_RULES}${recentCtx}`;
-
       const reqBody = {
         model: "deepseek-chat",
         max_tokens: 50,
-        temperature: 0.9,
-        presence_penalty: 0.6,
+        temperature: 1.1,
+        frequency_penalty: 0.8,
+        presence_penalty: 0.8,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `${outcome}，发一条消息。只输出一句话，不要解释。` },
+          { role: "user", content: `战况：${situation}。发一条符合你性格的消息，只输出一句话，不要解释，不要引号。` },
         ],
       };
-      console.log(`[AutoReact] calling DeepSeek for persona="${persona.name}", outcome="${outcome}"`);
+      console.log(`[AutoReact] DeepSeek call: persona=[${persona.labels.join("+")}] situation="${situation}"`);
       const resp = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -278,26 +365,26 @@ async function generateShillReaction(
       if (resp.ok) {
         const data = await resp.json() as any;
         const text = (data.choices?.[0]?.message?.content as string | undefined)?.trim();
-        console.log(`[AutoReact] DeepSeek raw reply: "${text}"`);
-        if (text && text.length >= 2 && text.length <= 60) return text;
-        console.log(`[AutoReact] reply rejected (length out of 2-60 range), falling back to canned.`);
+        console.log(`[AutoReact] DeepSeek reply: "${text}"`);
+        if (text && text.length >= 2 && text.length <= 60) {
+          addToRecentPool(text);
+          return text;
+        }
+        console.log(`[AutoReact] reply out of range (len=${text?.length}), using canned.`);
       } else {
         const errText = await resp.text().catch(() => "(unreadable)");
-        console.error(`[AutoReact] DeepSeek API error ${resp.status}: ${errText}`);
+        console.error(`[AutoReact] DeepSeek error ${resp.status}: ${errText}`);
       }
     } catch (err) {
-      console.error("[AutoReact] DeepSeek fetch exception:", err);
+      console.error("[AutoReact] DeepSeek exception:", err);
     }
   }
   // Canned fallback
-  if (won) {
-    return netAmount >= 5000 ? pickRandom(REACT_WIN_BIG) : pickRandom(REACT_WIN_SMALL);
-  } else {
-    const abs = Math.abs(netAmount);
-    if (abs >= 5000) return pickRandom(REACT_LOSE_BIG);
-    if (abs >= 1000) return pickRandom(REACT_LOSE_MED);
-    return pickRandom(REACT_LOSE_SMALL);
-  }
+  const abs = Math.abs(netAmount);
+  if (won) return abs >= 5000 ? pickRandom(REACT_WIN_BIG) : pickRandom(REACT_WIN_SMALL);
+  if (abs >= 5000) return pickRandom(REACT_LOSE_BIG);
+  if (abs >= 1000) return pickRandom(REACT_LOSE_MED);
+  return pickRandom(REACT_LOSE_SMALL);
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -908,24 +995,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Shill bet window from bot config (seconds → ms)
         const shillMinMs = Math.max(1000, ((botCfg as any).shillMinDelaySec ?? 5) * 1000);
         const configMaxMs = Math.max(shillMinMs + 1000, ((botCfg as any).shillMaxDelaySec ?? 90) * 1000);
-        // When countdown is active: cap bet window to first 40% of countdown (max 8s ceiling),
-        // so all shills place their bets well before the round closes.
-        // Amount proportions are unchanged — only the timing window is compressed.
-        const shillMaxMs = countdownSeconds
-          ? Math.max(shillMinMs + 500, Math.min(configMaxMs, Math.max(shillMinMs + 500, countdownSeconds * 1000 * 0.4), 8000))
-          : configMaxMs;
-        console.log(`[AutoBet] bet window: ${shillMinMs}ms–${shillMaxMs}ms (countdown=${countdownSeconds}s, configMax=${configMaxMs}ms)`);
-        // Assign each shill a unique random delay within the window
-        let usedDelays: number[] = [];
+        console.log(`[AutoBet] countdown=${countdownSeconds}s, configWindow=${shillMinMs}ms–${configMaxMs}ms`);
+
+        // Assign each shill a delay based on their permanent bet personality.
+        // Amounts are unchanged — only timing is personality-driven.
+        const usedDelays: number[] = [];
         for (const shill of shuffled) {
-          // Pick a delay not too close to any already used
-          let delay: number;
-          let attempts = 0;
-          do {
-            delay = Math.floor(Math.random() * (shillMaxMs - shillMinMs)) + shillMinMs;
-            attempts++;
-          } while (usedDelays.some(d => Math.abs(d - delay) < 1500) && attempts < 20);
+          const betPersonality = getShillBetPersonality(shill.id);
+          let delay = computeBetDelay(betPersonality, countdownSeconds, shillMinMs, configMaxMs);
+          // Extra "typing delay" if this shill spoke in the previous round
+          if (shillSpokeLastRound.has(shill.id)) {
+            delay += 3000 + Math.floor(Math.random() * 2000); // +3-5s for simulated typing
+          }
+          // Ensure no two shills bet at exactly the same millisecond (500ms separation)
+          while (usedDelays.some(d => Math.abs(d - delay) < 500)) delay += 300;
           usedDelays.push(delay);
+          console.log(`[AutoBet] shill ${shill.username} (${betPersonality}) will bet at ${delay}ms`);
 
           const shillId = shill.id;
           const shillUsername = shill.username;
@@ -1397,12 +1482,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
 
-        // Fetch last 10 user messages from this room to avoid repetition
-        const recentMsgs = await storage.getMessages(req.params.id, 10);
-        const recentTexts = recentMsgs
-          .filter(m => m.type === "user" && m.content)
-          .map(m => m.content as string)
-          .slice(-10);
+        // Update streaks for all shills who had real bets this round
+        for (const [uid, info] of byUser) {
+          if (info.totalStake > 0) updateShillStreak(uid, info.won, info.net);
+        }
+
+        // Clear "spoke last round" set — we'll repopulate it as shills speak below
+        shillSpokeLastRound.clear();
 
         // Per-shill gate: 60% chance each shill speaks (staggered 1–3s apart for fast rounds)
         const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
@@ -1420,12 +1506,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           scheduled++;
           console.log(`[AutoReact] scheduling shill ${uid} in ${reactDelay}ms (won=${info.won}, net=${info.net})`);
 
+          // Mark as "will speak this round" so next round adds typing delay to their bet
+          shillSpokeLastRound.add(uid);
+
           setTimeout(async () => {
             try {
-              const reaction = await generateShillReaction(info.won, info.net, recentTexts);
+              // generateShillReaction now uses global pool + per-shill persona + streak context
+              const reaction = await generateShillReaction(uid, info.won, info.net);
               const shill = await storage.getUser(uid);
               if (!shill) return;
-              console.log(`[AutoReact] shill ${shill.username} says: "${reaction}"`);
+              console.log(`[AutoReact] shill ${shill.username} [${getShillPersona(uid).labels.join("+")}] says: "${reaction}"`);
               const reactMsg = await storage.createMessage({
                 roomId: req.params.id,
                 userId: shill.id,
