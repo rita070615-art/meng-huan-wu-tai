@@ -172,6 +172,81 @@ function broadcastToRoomAdmins(roomId: string, data: object) {
   });
 }
 
+// ── Shill auto-reaction helper ──────────────────────────────────────────────
+const REACT_WIN_SMALL = [
+  "哈哈赢了！", "稳！", "今天运气不错！", "爽！", "走势对了！", "小赚！",
+  "嗯嗯", "感觉不错！", "继续！", "这局可以！", "选对了！", "还行还行",
+  "加大！", "不错！", "哈哈", "赢了！", "今天手气好！", "嗯！",
+];
+const REACT_WIN_BIG = [
+  "赢大了！！", "今晚请客！！", "这把爽死了！！", "哈哈哈赢了！！！",
+  "天啊！！", "血赚！！", "发了！！", "这波操作可以！！！",
+  "太爽了！！！", "哇塞！！！", "今晚鱼翅捞饭！！", "爽翻了！！！",
+];
+const REACT_LOSE_SMALL = [
+  "哎", "又输了", "下把拿回来", "唉", "运气差", "这把臭！", "算了", "继续！",
+  "怎么这样", "差点！", "不对劲", "哎呀", "算了算了", "再来！",
+];
+const REACT_LOSE_MED = [
+  "怎么回事！！", "这不对啊！！", "气死了！", "又输了！！", "什么鬼！！",
+  "怎么押哪个输哪个！", "服了！", "卧槽！", "这是什么走势！！",
+  "烦死了！！", "不服！！", "下把梭哈回来！！",
+];
+const REACT_LOSE_BIG = [
+  "卧槽！！！", "不是吧！！！", "怎么又输！！！", "我怎么这么倒霉！！！",
+  "什么操作！！！", "气！！！", "这不对！！！", "怎么可能！！！",
+  "不信邪再来！！！", "哦买噶！！！", "这怎么行！！！", "我要疯了！！！",
+  "怎么每次都押错！！", "我的天！！！",
+];
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+async function generateShillReaction(won: boolean, netAmount: number): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    try {
+      const outcome = won ? `赢了 ${netAmount} 积分` : `输了 ${Math.abs(netAmount)} 积分`;
+      const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          max_tokens: 30,
+          messages: [
+            {
+              role: "system",
+              content:
+                "你扮演一个在赌博聊天室里的普通赌客。说话极简短自然，像真人赌徒的情绪化口语表达。只输出一句话，不超过15个字，可以偶尔用叠词或感叹号，风格多变，不要每次说一样的话。",
+            },
+            {
+              role: "user",
+              content: `你刚刚${outcome}，用口语说一句符合你情绪的话。`,
+            },
+          ],
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json() as any;
+        const text = (data.choices?.[0]?.message?.content as string | undefined)?.trim();
+        if (text && text.length <= 40) return text;
+      }
+    } catch {
+      // fallthrough to canned
+    }
+  }
+  // Canned fallback
+  if (won) {
+    return netAmount >= 5000 ? pickRandom(REACT_WIN_BIG) : pickRandom(REACT_WIN_SMALL);
+  } else {
+    const abs = Math.abs(netAmount);
+    if (abs >= 5000) return pickRandom(REACT_LOSE_BIG);
+    if (abs >= 1000) return pickRandom(REACT_LOSE_MED);
+    return pickRandom(REACT_LOSE_SMALL);
+  }
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   app.use(
     session({
@@ -1202,6 +1277,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     broadcast(req.params.id, { type: "BET_ROUND_CLOSED", round: closed, winnerOption: winnerOptionKey, message: msg, bankerReturn, pumpRate, playerPumpRate, exitPumpRate: exitPumpRateBcast });
 
+    // ── Auto-reactions: shills comment on their win/loss result ──────────
+    // Fire-and-forget; runs after response is sent
+    (async () => {
+      try {
+        const botCfg = await storage.getBotSettings();
+        if (!(botCfg as any).autoReactEnabled) return;
+
+        // Build map: shillId → net P&L for this round
+        const shillSet = new Set((await storage.getShillUsers()).map(s => s.id));
+        const shillBets = roundBetsChron.filter(b => shillSet.has(b.userId));
+        if (shillBets.length === 0) return;
+
+        // Group by userId
+        const byUser = new Map<string, { totalStake: number; totalReceived: number; roomId: string; username: string }>();
+        for (const b of shillBets) {
+          const existing = byUser.get(b.userId);
+          const received = betPayouts.get(b.id) ?? 0;
+          if (existing) {
+            existing.totalStake += b.amount;
+            existing.totalReceived += received;
+          } else {
+            byUser.set(b.userId, {
+              totalStake: b.amount,
+              totalReceived: received,
+              roomId: req.params.id,
+              username: b.nickname || b.username,
+            });
+          }
+        }
+
+        // Shuffle shills and schedule staggered reactions (~50% chance each)
+        const shillIds = [...byUser.keys()].sort(() => Math.random() - 0.5);
+        let delayMs = 4000; // start 4s after round closes
+        for (const uid of shillIds) {
+          if (Math.random() < 0.5) continue; // ~50% chance of reacting
+          const info = byUser.get(uid)!;
+          const net = info.totalReceived - info.totalStake;
+          const won = net > 0;
+          const reactDelay = delayMs + Math.floor(Math.random() * 6000);
+          delayMs += 4000 + Math.floor(Math.random() * 4000); // stagger next shill
+
+          setTimeout(async () => {
+            try {
+              const reaction = await generateShillReaction(won, net);
+              const shill = await storage.getUser(uid);
+              if (!shill) return;
+              const reactMsg = await storage.createMessage({
+                roomId: info.roomId,
+                userId: shill.id,
+                username: shill.nickname || shill.username,
+                content: reaction,
+                type: "user",
+              });
+              broadcast(info.roomId, { type: "MESSAGE", message: reactMsg });
+            } catch {
+              // ignore errors in auto-reaction
+            }
+          }, reactDelay);
+        }
+      } catch {
+        // ignore errors
+      }
+    })();
+
     res.json(closed);
   });
 
@@ -1736,6 +1875,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ id: u.id, shillMinBet: u.shillMinBet, shillMaxBet: u.shillMaxBet });
   });
 
+  // ADMIN speaks as a shill — creates a chat message from the shill's identity
+  app.post("/api/admin/shills/:id/message", requireAdmin, async (req, res) => {
+    const schema = z.object({ roomId: z.string().min(1), content: z.string().min(1).max(200) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors[0].message });
+
+    const shill = await storage.getUser(req.params.id);
+    if (!shill) return res.status(404).json({ error: "托账号不存在" });
+    if (!shill.isShill) return res.status(400).json({ error: "该账号不是托" });
+
+    const room = await storage.getRoom(parsed.data.roomId);
+    if (!room) return res.status(404).json({ error: "房间不存在" });
+
+    const msg = await storage.createMessage({
+      roomId: parsed.data.roomId,
+      userId: shill.id,
+      username: shill.nickname || shill.username,
+      content: parsed.data.content,
+      type: "user",
+    });
+    broadcast(parsed.data.roomId, { type: "MESSAGE", message: msg });
+    res.json(msg);
+  });
+
   // BOT SETTINGS
   app.get("/api/admin/bot-settings", requireAdmin, async (req, res) => {
     const settings = await storage.getBotSettings();
@@ -1747,6 +1910,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       enabled: z.boolean(),
       minAmount: z.number().int().min(1),
       maxAmount: z.number().int().min(1),
+      autoReactEnabled: z.boolean().optional(),
       shillMinDelaySec: z.number().int().min(1).max(600).optional(),
       shillMaxDelaySec: z.number().int().min(1).max(600).optional(),
       webhookUrl1: z.string().max(500).optional(),

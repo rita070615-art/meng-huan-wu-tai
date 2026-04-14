@@ -31,6 +31,7 @@ export const botSettings = pgTable("bot_settings", {
   maxAmount: integer("max_amount").notNull().default(500),
   shillMinDelaySec: integer("shill_min_delay_sec").notNull().default(5),
   shillMaxDelaySec: integer("shill_max_delay_sec").notNull().default(90),
+  autoReactEnabled: boolean("auto_react_enabled").notNull().default(true),
   webhookUrl1: text("webhook_url1").default(""),
   webhookUrl2: text("webhook_url2").default(""),
   webhookUrl3: text("webhook_url3").default(""),

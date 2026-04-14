@@ -64,7 +64,7 @@ export interface IStorage {
 
   // Bot Settings
   getBotSettings(): Promise<BotSettings>;
-  updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number; webhookUrl1?: string; webhookUrl2?: string; webhookUrl3?: string }): Promise<BotSettings>;
+  updateBotSettings(data: { enabled: boolean; minAmount: number; maxAmount: number; autoReactEnabled?: boolean; webhookUrl1?: string; webhookUrl2?: string; webhookUrl3?: string }): Promise<BotSettings>;
   getShillUsers(): Promise<User[]>;
   setUserShill(id: string, isShill: boolean): Promise<User | undefined>;
   setUserShillRoom(id: string, shillRoomId: string | null): Promise<User | undefined>;

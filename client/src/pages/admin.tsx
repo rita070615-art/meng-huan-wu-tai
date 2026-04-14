@@ -1239,6 +1239,37 @@ function BotAdmin() {
   const [betRangeMin, setBetRangeMin] = useState("");
   const [betRangeMax, setBetRangeMax] = useState("");
 
+  const [speakingShillId, setSpeakingShillId] = useState<string | null>(null);
+  const [shillSpeakText, setShillSpeakText] = useState("");
+  const [shillSpeakRoomId, setShillSpeakRoomId] = useState("");
+
+  const shillMessageMutation = useMutation({
+    mutationFn: ({ id, roomId, content }: { id: string; roomId: string; content: string }) =>
+      apiRequest("POST", `/api/admin/shills/${id}/message`, { roomId, content }),
+    onSuccess: () => {
+      setShillSpeakText("");
+      toast({ title: "消息已发送" });
+    },
+    onError: (e: Error) => toast({ title: "发送失败", description: e.message, variant: "destructive" }),
+  });
+
+  const autoReactMutation = useMutation({
+    mutationFn: (autoReactEnabled: boolean) => {
+      if (!settings) throw new Error("无设置");
+      return apiRequest("PATCH", "/api/admin/bot-settings", {
+        enabled: settings.enabled,
+        minAmount: settings.minAmount,
+        maxAmount: settings.maxAmount,
+        autoReactEnabled,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bot-settings"] });
+      toast({ title: "托自动发言设置已保存" });
+    },
+    onError: (e: Error) => toast({ title: "保存失败", description: e.message, variant: "destructive" }),
+  });
+
   const shillBetRangeMutation = useMutation({
     mutationFn: ({ id, shillMinBet, shillMaxBet }: { id: string; shillMinBet: number | null; shillMaxBet: number | null }) =>
       apiRequest("PATCH", `/api/admin/users/${id}/shill-bet-range`, { shillMinBet, shillMaxBet }),
@@ -1343,6 +1374,30 @@ function BotAdmin() {
               </button>
             </div>
 
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+              <div>
+                <p className="font-medium text-sm">输赢自动发言</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  结算后托自动根据输赢发出自然的反应消息（约50%概率）
+                </p>
+              </div>
+              <button
+                data-testid="button-toggle-auto-react"
+                onClick={() => settings && autoReactMutation.mutate(!(settings as any).autoReactEnabled)}
+                disabled={autoReactMutation.isPending}
+                className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              >
+                {(settings as any).autoReactEnabled ? (
+                  <ToggleRight className="w-9 h-9 text-purple-400" />
+                ) : (
+                  <ToggleLeft className="w-9 h-9 text-muted-foreground" />
+                )}
+                <span className={(settings as any).autoReactEnabled ? "text-purple-400" : "text-muted-foreground"}>
+                  {(settings as any).autoReactEnabled ? "已开启" : "已关闭"}
+                </span>
+              </button>
+            </div>
+
             <div className="space-y-3">
               <p className="text-sm font-medium">随机下注区间（积分）</p>
               <div className="flex items-center gap-3">
@@ -1436,7 +1491,8 @@ function BotAdmin() {
         ) : shills.length > 0 ? (
           <div className="space-y-2">
             {shills.map((u) => (
-              <div key={u.id} className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+              <div key={u.id} className="rounded-lg">
+              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
                 <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-sm font-bold text-purple-400 shrink-0">
                   {(u.nickname || u.username)[0].toUpperCase()}
                 </div>
@@ -1576,17 +1632,89 @@ function BotAdmin() {
                     </div>
                   )}
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  data-testid={`button-remove-shill-${u.id}`}
-                  onClick={() => shillMutation.mutate({ id: u.id, isShill: false })}
-                  disabled={shillMutation.isPending}
-                  className="shrink-0 hover:border-destructive hover:text-destructive"
-                  title="取消托身份"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </Button>
+                <div className="flex items-start gap-1 shrink-0">
+                  <button
+                    data-testid={`button-speak-shill-${u.id}`}
+                    title="代发言"
+                    onClick={() => {
+                      if (speakingShillId === u.id) {
+                        setSpeakingShillId(null);
+                      } else {
+                        setSpeakingShillId(u.id);
+                        setShillSpeakText("");
+                        setShillSpeakRoomId(u.shillRoomId ?? rooms?.[0]?.id ?? "");
+                      }
+                    }}
+                    className={`p-1 rounded transition-colors ${speakingShillId === u.id ? "text-purple-400 bg-purple-400/10" : "text-muted-foreground hover:text-purple-400"}`}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid={`button-remove-shill-${u.id}`}
+                    onClick={() => shillMutation.mutate({ id: u.id, isShill: false })}
+                    disabled={shillMutation.isPending}
+                    className="shrink-0 hover:border-destructive hover:text-destructive"
+                    title="取消托身份"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+              {/* Speak-as-shill panel */}
+              {speakingShillId === u.id && (
+                <div className="mt-2 mx-1 p-3 bg-purple-500/5 border border-purple-500/20 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <MessageSquare className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span className="text-xs font-medium text-purple-400">代 {u.nickname || u.username} 发言</span>
+                    <select
+                      data-testid={`select-speak-room-${u.id}`}
+                      value={shillSpeakRoomId}
+                      onChange={(e) => setShillSpeakRoomId(e.target.value)}
+                      className="text-xs bg-background border border-border rounded px-1.5 py-0.5 text-muted-foreground hover:text-foreground ml-auto"
+                    >
+                      {rooms?.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <form
+                    className="flex items-end gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!shillSpeakText.trim() || !shillSpeakRoomId) return;
+                      shillMessageMutation.mutate({ id: u.id, roomId: shillSpeakRoomId, content: shillSpeakText.trim() });
+                    }}
+                  >
+                    <Textarea
+                      data-testid={`input-speak-shill-${u.id}`}
+                      placeholder="输入发言内容..."
+                      value={shillSpeakText}
+                      onChange={(e) => setShillSpeakText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (shillSpeakText.trim() && shillSpeakRoomId) {
+                            shillMessageMutation.mutate({ id: u.id, roomId: shillSpeakRoomId, content: shillSpeakText.trim() });
+                          }
+                        }
+                      }}
+                      className="text-sm resize-none flex-1"
+                      rows={2}
+                    />
+                    <button
+                      type="submit"
+                      data-testid={`button-send-speak-shill-${u.id}`}
+                      disabled={shillMessageMutation.isPending || !shillSpeakText.trim() || !shillSpeakRoomId}
+                      className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white disabled:opacity-40 transition-colors shrink-0"
+                      title="发送（Enter）"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
+              )}
               </div>
             ))}
           </div>

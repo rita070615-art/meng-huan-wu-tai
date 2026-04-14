@@ -109,6 +109,9 @@ app.use((req, res, next) => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS shill_min_bet INTEGER;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS shill_max_bet INTEGER;
     `);
+    await migrationPool.query(`
+      ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS auto_react_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
     await migrationPool.end();
     console.log("Schema migrations applied.");
   } catch (e) {
